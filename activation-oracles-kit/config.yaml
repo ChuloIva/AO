@@ -2,7 +2,7 @@
 
 # Default model settings
 default_model: "Qwen/Qwen3-1.7B"
-use_8bit_quantization: true
+use_8bit_quantization: False
 
 # Generation settings
 generation:
@@ -13,7 +13,7 @@ generation:
 
 # World LLM defaults
 world_llm:
-  default_model: "anthropic/claude-3.5-sonnet"
+  default_model: "moonshotai/kimi-k2:free"
   temperature: 1.0
   max_tokens: 256
 
@@ -40,3 +40,14 @@ ui:
 logging:
   level: "INFO"
   log_file: "activation_oracles.log"
+
+# ROCm configuration (for AMD GPUs)
+rocm:
+  # Path to ROCm installation (leave empty for auto-detection)
+  rocm_home: ""
+  # Enable automatic ROCm environment setup
+  auto_configure: true
+  # GPU architecture (gfx1100 for RX 7700 XT, gfx90a for MI200 series, etc.)
+  gpu_arch: "gfx1100"
+  # GFX version override (11.0.0 for RDNA 3)
+  gfx_version: "11.0.0"

@@ -1,12 +1,112 @@
 """
-Model Manager - Handles model loading with Mac/CUDA support and 12GB VRAM optimization
+Model Manager - Handles model loading with Mac/CUDA/ROCm support and 12GB VRAM optimization
 """
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from typing import Tuple, List, Dict
 import sys
 import os
+
+# Setup ROCm environment variables before importing torch
+def setup_rocm_environment():
+    """
+    Detect and configure ROCm environment for AMD GPUs.
+    Must be called before importing torch.
+
+    Reads configuration from config.yaml and applies ROCm environment
+    variables from rocm.md for optimal performance on AMD GPUs.
+    """
+    # Skip if already configured
+    if 'HSA_OVERRIDE_GFX_VERSION' in os.environ:
+        return False
+
+    # Load config to check if auto-configure is enabled
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.yaml')
+    config = {}
+    try:
+        import yaml
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f) or {}
+    except Exception:
+        pass  # Continue with defaults if config load fails
+
+    rocm_config = config.get('rocm', {})
+    auto_configure = rocm_config.get('auto_configure', True)
+
+    if not auto_configure:
+        return False
+
+    # Get configuration values
+    gpu_arch = rocm_config.get('gpu_arch', 'gfx1100')
+    gfx_version = rocm_config.get('gfx_version', '11.0.0')
+    configured_rocm_home = rocm_config.get('rocm_home', '')
+
+    # Check for ROCm installation paths
+    rocm_paths = [
+        configured_rocm_home,
+        os.environ.get('ROCm_HOME', ''),
+        '/opt/rocm',
+        '/opt/rocm-6.0.0',
+        '/opt/rocm-6.0',
+    ]
+
+    rocm_path = None
+    for path in rocm_paths:
+        if path and os.path.exists(path):
+            rocm_path = path
+            break
+
+    # Set environment variables for ROCm
+    # These improve performance even if full ROCm toolkit isn't installed
+    print("Configuring ROCm environment for AMD GPU...")
+
+    # Core ROCm environment variables from rocm.md
+    os.environ['HSA_OVERRIDE_GFX_VERSION'] = gfx_version
+    os.environ['PYTORCH_ROCM_ARCH'] = gpu_arch
+
+    # Set ROCm home if we found an installation
+    if rocm_path:
+        os.environ['ROCm_HOME'] = rocm_path
+        os.environ['ROCM_VERSION'] = '6.0'
+        print(f"  ROCm installation found at: {rocm_path}")
+
+        # ROCtracer library path
+        roctracer_lib = f'{rocm_path}/lib/libroctracer64.so'
+        if os.path.exists(roctracer_lib):
+            os.environ['HSA_TOOLS_LIB'] = roctracer_lib
+    else:
+        print("  ROCm toolkit not found, using PyTorch ROCm backend")
+
+    # PyTorch ROCm configuration (works with or without full toolkit)
+    os.environ['TORCH_BACKEND'] = 'rocm'
+    os.environ['HIP_VISIBLE_DEVICES'] = '0'
+
+    # Performance optimizations
+    os.environ['PYTORCH_HIP_ALLOC_CONF'] = 'expandable_segments:True'
+
+    print(f"  GPU Architecture: {gpu_arch}")
+    print(f"  GFX Version: {gfx_version}")
+    print("ROCm environment configured successfully")
+    return True
+
+# Setup ROCm before importing torch
+_rocm_configured = setup_rocm_environment()
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from typing import Tuple, List, Dict
+
+# Try to import BitsAndBytesConfig, but make it optional
+try:
+    from transformers import BitsAndBytesConfig
+    BITSANDBYTES_AVAILABLE = True
+except (ImportError, RuntimeError) as e:
+    BITSANDBYTES_AVAILABLE = False
+    BitsAndBytesConfig = None
+    if _rocm_configured:
+        print(f"Note: bitsandbytes not available for ROCm - quantization disabled")
+        print(f"  (This is expected if rocminfo is not installed)")
+    else:
+        print(f"Note: bitsandbytes not available - quantization disabled")
 
 # Add activation_oracles to path if not already present
 activation_oracles_path = os.path.join(os.path.dirname(__file__), '../../activation_oracles')
@@ -45,10 +145,18 @@ SUPPORTED_MODELS = {
 }
 
 
+def is_rocm() -> bool:
+    """Check if running on ROCm (AMD GPU)"""
+    if not torch.cuda.is_available():
+        return False
+    # ROCm builds of PyTorch have torch.version.hip attribute
+    return hasattr(torch.version, 'hip') and torch.version.hip is not None
+
+
 def get_device() -> torch.device:
     """
     Get appropriate device for current platform.
-    Prioritizes: MPS (Mac) > CUDA (NVIDIA) > CPU
+    Prioritizes: MPS (Mac) > CUDA/ROCm (NVIDIA/AMD) > CPU
     """
     if torch.backends.mps.is_available():
         return torch.device("mps")
@@ -61,7 +169,11 @@ def get_device_name() -> str:
     """Get human-readable device name"""
     device = get_device()
     if device.type == "cuda":
-        return f"CUDA ({torch.cuda.get_device_name(0)})"
+        gpu_name = torch.cuda.get_device_name(0)
+        if is_rocm():
+            return f"ROCm/AMD ({gpu_name})"
+        else:
+            return f"CUDA/NVIDIA ({gpu_name})"
     elif device.type == "mps":
         return "Apple MPS (Metal)"
     return "CPU"
@@ -110,10 +222,11 @@ def load_model_and_tokenizer(
 ) -> Tuple[AutoModelForCausalLM, AutoTokenizer, torch.device]:
     """
     Load model and tokenizer with platform-specific optimizations.
+    Automatically detects and configures ROCm for AMD GPUs.
 
     Args:
         model_name: HuggingFace model identifier
-        use_8bit: Whether to use 8-bit quantization (only works on CUDA)
+        use_8bit: Whether to use 8-bit quantization (works on CUDA/ROCm)
         device: Device to use ("auto", "cuda", "mps", "cpu")
 
     Returns:
@@ -125,14 +238,18 @@ def load_model_and_tokenizer(
     else:
         device_obj = torch.device(device)
 
-    # Configure quantization (only works on CUDA)
+    # Configure quantization (works on CUDA/ROCm, but only if bitsandbytes is available)
     quantization_config = None
     if use_8bit and device_obj.type == "cuda":
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            llm_int8_threshold=6.0,
-            llm_int8_has_fp16_weight=False
-        )
+        if BITSANDBYTES_AVAILABLE:
+            quantization_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_threshold=6.0,
+                llm_int8_has_fp16_weight=False
+            )
+        else:
+            print("Warning: 8-bit quantization requested but bitsandbytes not available")
+            print("  Loading model in full precision instead")
 
     # Configure attention
     attention_config = configure_attention(model_name, device_obj)

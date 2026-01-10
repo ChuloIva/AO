@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Import UI components
 from ui.state_manager import init_session_state, is_setup_complete
-from ui.tabs import tab_setup, tab_scenario
+from ui.tabs import tab_setup, tab_scenario, tab_analysis
 
 # Page configuration
 st.set_page_config(
@@ -61,15 +61,7 @@ with tab2:
     tab_scenario.render()
 
 with tab3:
-    st.header("🔬 Analysis")
-    st.info("📝 Analysis features coming in Phase 2")
-    st.markdown("""
-    **Planned features:**
-    - Token selection from conversation traces
-    - Post-hoc activation capture
-    - Oracle chat interface
-    - Activation visualization
-    """)
+    tab_analysis.render()
 
 with tab4:
     st.header("💬 Free Chat")
@@ -94,13 +86,13 @@ with st.expander("ℹ️ About"):
     - Paper: [Activation Oracles](https://arxiv.org/abs/2512.15674)
     - Code: [github.com/adamkarvonen/activation_oracles](https://github.com/adamkarvonen/activation_oracles)
 
-    **Current Phase:** Phase 1 - Scenario Infrastructure
+    **Current Phase:** Phase 2 - Activation Capture & Oracle Querying
     - ✅ Model loading (12GB VRAM optimized)
     - ✅ Mac support (PyTorch + MPS)
     - ✅ OpenRouter World LLM integration
     - ✅ Epistemic Doctor scenario
-    - ⏳ Activation capture (Phase 2)
-    - ⏳ Oracle queries (Phase 2)
+    - ✅ Post-hoc activation capture
+    - ✅ Oracle queries with activation injection
     - ⏳ Free chat (Phase 3)
 
     **Documentation:**

@@ -1,4 +1,4 @@
-# Implementation Status - Phase 1 Complete ✅
+# Implementation Status - Phase 2 Complete ✅
 
 ## What We Built
 
@@ -133,18 +133,49 @@ Before proceeding to Phase 2, verify:
    - Manual action input is basic
    - No visualization of test history
 
-## Next Steps: Phase 2
+## Phase 2: Activation Capture & Oracle Querying (COMPLETE ✅)
 
-**Goal:** Activation capture and oracle querying
+**Implementation Date:** 2026-01-11
 
-**Files to create:**
-1. `core/activation_engine.py` - Post-hoc activation capture
-2. `core/oracle_interface.py` - Oracle query interface
-3. `ui/components/token_selector.py` - Interactive token selection
-4. `ui/components/oracle_chat.py` - Oracle Q&A interface
-5. `ui/tabs/tab_analysis.py` - Analysis tab implementation
+### Files Created (10 new files)
+1. ✅ `core/activation_cache.py` - NPZ storage for activation tensors
+2. ✅ `core/activation_engine.py` - Hook-based post-hoc activation capture
+3. ✅ `core/oracle_interface.py` - Oracle querying with activation injection
+4. ✅ `ui/components/__init__.py` - Components module initialization
+5. ✅ `ui/components/token_selector.py` - Interactive token selection UI
+6. ✅ `ui/components/oracle_chat.py` - Oracle Q&A interface
+7. ✅ `ui/tabs/tab_analysis.py` - Complete Analysis tab implementation
 
-**Timeline:** Days 11-17 (7 days)
+### Files Modified (4 existing files)
+1. ✅ `core/conversation_trace.py` - Added activation metadata fields
+2. ✅ `ui/state_manager.py` - Added analysis state variables
+3. ✅ `ui/tabs/__init__.py` - Added tab_analysis import
+4. ✅ `app.py` - Integrated Analysis tab
+
+### Features Implemented
+- ✅ Post-hoc activation capture using PyTorch hooks
+- ✅ Layer selection (25%, 50%, 75%) with automatic calculation
+- ✅ Token selection UI with quick select buttons
+- ✅ Activation caching in NPZ format
+- ✅ Oracle querying with additive norm-matching injection
+- ✅ Preset oracle questions
+- ✅ Custom oracle questions
+- ✅ Oracle chat history
+- ✅ Export functionality (trace JSON, activations NPZ, oracle chat JSON)
+- ✅ Multi-architecture support (Qwen, Llama, Gemma)
+
+## Next Steps: Phase 3
+
+**Goal:** Free Chat mode and additional scenarios
+
+**Planned features:**
+1. Free chat mode with custom prompts
+2. Prompt editor with save/load
+3. Additional scenarios (War of Attrition, Centipede Game, etc.)
+4. Activation visualization (PCA, similarity matrices)
+5. Multi-layer comparison
+
+**Timeline:** Future implementation
 
 ## Quick Start Guide
 
@@ -202,6 +233,6 @@ streamlit run app.py
 
 ---
 
-**Status:** Phase 1 COMPLETE ✅
-**Date:** 2026-01-10
-**Next Phase:** Phase 2 - Activation Capture & Oracle Queries
+**Status:** Phase 2 COMPLETE ✅
+**Date:** 2026-01-11
+**Next Phase:** Phase 3 - Free Chat & Additional Scenarios (Future)

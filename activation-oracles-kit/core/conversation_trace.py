@@ -64,6 +64,12 @@ class ConversationTrace:
     final_score: Optional[float] = None
     metadata: Dict = field(default_factory=dict)
 
+    # Phase 2: Activation capture metadata
+    activations_captured: bool = False
+    activation_layer: Optional[int] = None
+    activation_positions: List[int] = field(default_factory=list)
+    activation_file_path: Optional[str] = None
+
     def add_message(self, role: str, content: str) -> Message:
         """Add a message to the conversation"""
         msg = Message(role=role, content=content)
@@ -102,7 +108,12 @@ class ConversationTrace:
             "oracle_name": self.oracle_name,
             "generation_kwargs": self.generation_kwargs,
             "final_score": self.final_score,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            # Phase 2: Activation metadata
+            "activations_captured": self.activations_captured,
+            "activation_layer": self.activation_layer,
+            "activation_positions": self.activation_positions,
+            "activation_file_path": self.activation_file_path
         }
 
         with open(path, 'w') as f:
@@ -130,7 +141,12 @@ class ConversationTrace:
             oracle_name=data.get("oracle_name", ""),
             generation_kwargs=data.get("generation_kwargs", {}),
             final_score=data.get("final_score"),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
+            # Phase 2: Activation metadata
+            activations_captured=data.get("activations_captured", False),
+            activation_layer=data.get("activation_layer"),
+            activation_positions=data.get("activation_positions", []),
+            activation_file_path=data.get("activation_file_path")
         )
 
     def get_messages_as_dicts(self) -> List[Dict[str, str]]:

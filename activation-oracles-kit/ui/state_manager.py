@@ -37,10 +37,14 @@ def init_session_state():
         # Free chat state
         "free_chat_messages": [],
 
-        # Analysis state
+        # Analysis state (Phase 2)
         "selected_tokens": [],
+        "selected_token_positions": set(),
+        "current_activations": {},
+        "current_layer": None,
         "cached_activations": {},
         "oracle_chat_history": [],
+        "trigger_capture": False,
 
         # Prompt editing state
         "current_prompt": "",
