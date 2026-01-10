@@ -1,0 +1,42 @@
+# Activation Oracles Research Kit - Configuration
+
+# Default model settings
+default_model: "Qwen/Qwen3-1.7B"
+use_8bit_quantization: true
+
+# Generation settings
+generation:
+  max_new_tokens: 256
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+
+# World LLM defaults
+world_llm:
+  default_model: "anthropic/claude-3.5-sonnet"
+  temperature: 1.0
+  max_tokens: 256
+
+# Activation capture settings
+activation_capture:
+  default_layer_percent: 50  # Middle layer
+  cache_activations: true
+  injection_layer: 1
+  steering_coefficient: 1.0
+
+# Data directories
+data:
+  traces_dir: "data/traces"
+  activations_dir: "data/activations"
+  exports_dir: "data/exports"
+
+# UI settings
+ui:
+  page_title: "Activation Oracles Research Kit"
+  page_icon: "🧠"
+  layout: "wide"
+  
+# Logging
+logging:
+  level: "INFO"
+  log_file: "activation_oracles.log"

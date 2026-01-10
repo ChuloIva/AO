@@ -1,0 +1,30 @@
+# Core ML
+torch
+transformers==4.55.2
+peft==0.17.1
+bitsandbytes
+accelerate==1.10.1
+
+# Apple Silicon GPU acceleration (macOS only, auto-installed by setup.sh)
+# mlx
+# mlx-lm
+
+# Data structures
+pydantic==2.11.7
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Streamlit UI
+streamlit>=1.30.0
+streamlit-lottie>=0.0.5
+
+# API clients
+requests>=2.31.0
+openai>=1.0.0  # For OpenRouter (compatible API)
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Include activation_oracles as editable dependency
+# Install with: pip install -e ../activation_oracles
