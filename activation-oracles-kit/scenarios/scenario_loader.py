@@ -9,11 +9,13 @@ from scenarios.base import BaseScenario
 from scenarios.world_llm import WorldLLM
 from scenarios.patient_llm import PatientLLM
 from scenarios.implementations.epistemic_doctor import EpistemicDoctorScenario
+from scenarios.implementations.therapist import TherapistScenario
 
 
 # Map scenario names to implementation classes
 SCENARIO_CLASSES = {
     "Epistemic Doctor": EpistemicDoctorScenario,
+    "Therapist": TherapistScenario,
     # Add more scenarios here as they're implemented
     # "War of Attrition": WarOfAttritionScenario,
     # "Centipede Game": CentipedeGameScenario,

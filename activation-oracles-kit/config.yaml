@@ -21,7 +21,7 @@ world_llm:
 patient_llm:
   default_model: "anthropic/claude-3-5-haiku"
   temperature: 0.8
-  max_tokens: 150
+  max_tokens: 300
 
 # Activation capture settings
 activation_capture:
