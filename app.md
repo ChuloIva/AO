@@ -2,9 +2,7 @@
 
 ## Executive Summary
 
-A Streamlit-based research tool for exploring LLM internals through Activation Oracles. The app enables researchers to run psychological/psychiatric simulations with **fully customizable prompts**, capture model activations, and query those activations through an oracle LLM to understand *why* the model behaved as it did.
-
-**Core Philosophy:** Complete prompt control for experimentation. Users can freely edit system prompts to test hypotheses about behavior, cognition, and decision-making - with pre-built presets for convenience but no restrictions on customization.
+A Streamlit-based research tool for exploring LLM internals through Activation Oracles. The app enables researchers to run psychological/psychiatric simulations, capture model activations, and query those activations through an oracle LLM to understand *why* the model behaved as it did.
 
 ---
 
@@ -383,7 +381,7 @@ too strongly on your initial hypothesis.
 ```
 ┌─ Simulation ────────────────────────────────────────────────────────────────┐
 │                                                                             │
-│  Scenario: Epistemic Doctor │ Persona: Anxious [Edit Prompt] │ Round: 3/10│
+│  Scenario: Epistemic Doctor │ Persona: Anxious │ Round: 3/10              │
 │  Resources: 7/10 │ Score: 0                                                │
 │                                                                             │
 │  ┌─ World State ──────────────────────────────────────────────────────┐   │
@@ -393,7 +391,7 @@ too strongly on your initial hypothesis.
 │                                                                             │
 │  ┌─ Conversation ─────────────────────────────────────────────────────┐   │
 │  │                                                                     │   │
-│  │ [DOCTOR] I'd like to order a blood panel to check for infection.  │   │
+│  │ [DOCTOR] I'd like to order a blood panel to check for infection.  │   │ 
 │  │                                                                     │   │
 │  │ [WORLD] Blood work results: WBC slightly elevated (11,000).        │   │
 │  │         Cost: 1 resource. Remaining: 7                              │   │
@@ -409,8 +407,6 @@ too strongly on your initial hypothesis.
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
-
-**Note:** The [Edit Prompt] button allows mid-simulation prompt adjustments to test how behavioral changes affect decisions.
 
 ### Free Chat Mode
 ```
@@ -665,7 +661,6 @@ activation-oracles-kit/
 │   ├── components/
 │   │   ├── model_selector.py
 │   │   ├── scenario_browser.py
-│   │   ├── prompt_editor.py    # Free-text prompt editor with presets
 │   │   ├── chat_panel.py
 │   │   ├── token_selector.py
 │   │   └── oracle_chat.py
@@ -676,15 +671,6 @@ activation-oracles-kit/
 │   │   ├── analysis.py         # Token selection & oracle
 │   │   └── export.py           # Export & visualization
 │   └── styles.css
-│
-├── prompts/
-│   ├── presets/                # Pre-built persona prompts
-│   │   ├── baseline.txt
-│   │   ├── anxious.txt
-│   │   ├── impulsive.txt
-│   │   ├── overconfident.txt
-│   │   └── ...
-│   └── user_saved/             # User-created custom prompts
 │
 ├── data/
 │   ├── traces/                 # Saved conversation traces
@@ -708,7 +694,6 @@ activation-oracles-kit/
 
 ### Phase 2: Basic UI (Week 2)
 - [ ] Model selection panel
-- [ ] **Prompt editor with presets** (core feature)
 - [ ] Free chat mode
 - [ ] Token selection interface
 - [ ] Oracle chat panel
@@ -752,20 +737,11 @@ world_response = world_llm.generate(subject_response)  # Separate call
 ### C. Modular Scenario Definition
 Scenarios are YAML files with:
 - World LLM prompt template
-- Subject LLM prompt template (base version)
-- Persona modifiers (presets)
+- Subject LLM prompt template
+- Persona modifiers
 - Preset oracle queries for key moments
 
 This allows researchers to create new scenarios without code changes.
-
-### D. Free Prompt Editing Philosophy
-**All prompts are fully editable at runtime.** Presets and scenarios provide starting points, but users can:
-- Modify any system prompt before or during simulation
-- Save custom prompts as new presets
-- Test arbitrary hypotheses without touching code
-- Rapidly iterate on persona variations
-
-This design choice prioritizes research flexibility over UI simplicity. The goal is to enable exploratory science, not just run pre-defined experiments.
 
 ---
 
@@ -807,9 +783,7 @@ For initial release, focus on:
 1. ✅ Single scenario (Epistemic Doctor)
 2. ✅ Single model (Qwen3-8B - good balance of capability vs VRAM)
 3. ✅ Local GPU support only (RunPod in v2)
-4. ✅ **Free prompt editor with 3-5 persona presets** (essential for research)
-5. ✅ Free chat mode for arbitrary prompt testing
-6. ✅ Token selection + oracle chat
-7. ✅ Basic trace export (JSON)
+4. ✅ Token selection + oracle chat
+5. ✅ Basic trace export (JSON)
 
-This gets core functionality working. Expand from there based on usage patterns.
+This gets core functionality working. Expand from there based on usage patterns.g
