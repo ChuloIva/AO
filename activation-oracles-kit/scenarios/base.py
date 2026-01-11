@@ -3,7 +3,7 @@ Base Scenario - Abstract class defining the scenario interface
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 
 
@@ -14,7 +14,7 @@ class ScenarioState:
     is_complete: bool = False
     score: float = 0.0
     resources: int = 0
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.metadata is None:
@@ -184,8 +184,9 @@ class BaseScenario(ABC):
         }
 
         # Add custom metadata
-        for key, value in self.state.metadata.items():
-            replacements[key.upper()] = str(value)
+        if self.state.metadata:
+            for key, value in self.state.metadata.items():
+                replacements[key.upper()] = str(value)
 
         # Replace all
         for var, value in replacements.items():
@@ -202,9 +203,11 @@ class BaseScenario(ABC):
             reason: Reason for score change
         """
         self.state.score += delta
-        if reason and "score_log" not in self.state.metadata:
-            self.state.metadata["score_log"] = []
         if reason:
+            if self.state.metadata is None:
+                self.state.metadata = {}
+            if "score_log" not in self.state.metadata:
+                self.state.metadata["score_log"] = []
             self.state.metadata["score_log"].append({
                 "round": self.state.round,
                 "delta": delta,

@@ -110,6 +110,8 @@ class TherapistScenario(BaseScenario):
         # Update state
         self.session_complete = True
         self.state.is_complete = True
+        if self.state.metadata is None:
+            self.state.metadata = {}
         self.state.metadata["session_complete"] = True
         self.state.metadata["therapeutic_goals_achieved"] = self.therapeutic_goals_achieved
 
@@ -191,6 +193,10 @@ Final Score: {self.state.score}"""
         self._check_therapeutic_goals(action, world_response)
 
         # Log action with both responses for debugging
+        if self.state.metadata is None:
+            self.state.metadata = {}
+        if "action_log" not in self.state.metadata:
+            self.state.metadata["action_log"] = []
         self.state.metadata["action_log"].append({
             "round": self.state.round,
             "action": action,
@@ -358,6 +364,10 @@ If the therapist uses therapeutic techniques, respond realistically based on you
                 
                 if action_matches or response_matches:
                     self.therapeutic_goals_achieved.append(goal)
+                    if self.state.metadata is None:
+                        self.state.metadata = {}
+                    if "therapeutic_goals_achieved" not in self.state.metadata:
+                        self.state.metadata["therapeutic_goals_achieved"] = []
                     self.state.metadata["therapeutic_goals_achieved"].append(goal)
                     
                     # Add score for achieving goal
@@ -374,7 +384,7 @@ If the therapist uses therapeutic techniques, respond realistically based on you
             "name": self.name,
             "rounds": self.state.round,
             "resources_used": self.initial_resources - self.state.resources,
-            "interventions_used": len(self.state.metadata.get("action_log", [])),
+            "interventions_used": len(self.state.metadata.get("action_log", []) if self.state.metadata else []),
             "therapeutic_goals_achieved": len(self.therapeutic_goals_achieved),
             "session_complete": self.session_complete,
             "final_score": self.state.score,

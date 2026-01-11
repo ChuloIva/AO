@@ -1,0 +1,74 @@
+{
+  "459": {
+    "layer": 18,
+    "token_position": 459,
+    "token_text": " is",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "460": {
+    "layer": 18,
+    "token_position": 460,
+    "token_text": " to",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "461": {
+    "layer": 18,
+    "token_position": 461,
+    "token_text": " focus",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "462": {
+    "layer": 18,
+    "token_position": 462,
+    "token_text": " on",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "463": {
+    "layer": 18,
+    "token_position": 463,
+    "token_text": " small",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "464": {
+    "layer": 18,
+    "token_position": 464,
+    "token_text": ",",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "465": {
+    "layer": 18,
+    "token_position": 465,
+    "token_text": " achievable",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "466": {
+    "layer": 18,
+    "token_position": 466,
+    "token_text": " goals",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  }
+}

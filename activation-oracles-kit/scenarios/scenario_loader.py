@@ -10,12 +10,14 @@ from scenarios.world_llm import WorldLLM
 from scenarios.patient_llm import PatientLLM
 from scenarios.implementations.epistemic_doctor import EpistemicDoctorScenario
 from scenarios.implementations.therapist import TherapistScenario
+from scenarios.implementations.simple_therapist import SimpleTherapistScenario
 
 
 # Map scenario names to implementation classes
 SCENARIO_CLASSES = {
     "Epistemic Doctor": EpistemicDoctorScenario,
     "Therapist": TherapistScenario,
+    "SimpleTherapist": SimpleTherapistScenario,
     # Add more scenarios here as they're implemented
     # "War of Attrition": WarOfAttritionScenario,
     # "Centipede Game": CentipedeGameScenario,
@@ -62,10 +64,12 @@ def validate_scenario_config(config: Dict) -> bool:
         "name",
         "description",
         "category",
-        "world_llm_prompt",
         "subject_llm_base_prompt",
         "personas"
     ]
+    
+    # For scenarios that use world/patient LLMs, world_llm_prompt is required
+    # For simple scenarios, it's optional
 
     for field in required_fields:
         if field not in config:
@@ -116,8 +120,18 @@ def load_scenario(
 
     scenario_class = SCENARIO_CLASSES[scenario_name]
 
-    # Instantiate with both world_llm and patient_llm
-    scenario = scenario_class(config=config, world_llm=world_llm, patient_llm=patient_llm)
+    # Instantiate scenario
+    # Check if scenario class requires world_llm and patient_llm
+    import inspect
+    sig = inspect.signature(scenario_class.__init__)
+    params = list(sig.parameters.keys())
+    
+    if 'world_llm' in params and 'patient_llm' in params:
+        # Traditional scenarios with world and patient LLMs
+        scenario = scenario_class(config=config, world_llm=world_llm, patient_llm=patient_llm)
+    else:
+        # Simplified scenarios without world/patient LLMs
+        scenario = scenario_class(config=config)
 
     # Set persona
     scenario.set_persona(persona)
