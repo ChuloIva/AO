@@ -50,16 +50,18 @@ def render():
     st.subheader("2. Select Tokens for Analysis")
 
     token_selector = TokenSelector(trace, get_state("tokenizer"))
-    selected_positions, layer_num = token_selector.render()
+    selected_positions, layer_nums = token_selector.render()
 
     # Update state
-    set_state("current_layer", layer_num)
+    set_state("current_layers", layer_nums)
 
     # Handle activation capture trigger
     if st.session_state.get("trigger_capture", False):
-        _capture_activations(trace, selected_positions, layer_num)
+        capture_layers = st.session_state.get("capture_layers", layer_nums)
+        _capture_activations(trace, selected_positions, capture_layers)
         st.session_state["trigger_capture"] = False
-        st.rerun()
+        # Don't rerun here - let the user see the success/error message
+        # The oracle interface will appear automatically after the next interaction
 
     st.divider()
 
@@ -93,15 +95,23 @@ def _select_trace(trace_history):
         scenario_name = trace.scenario_id or "Free Chat"
         timestamp = trace.timestamp.strftime('%Y-%m-%d %H:%M')
         score_info = f"Score: {trace.final_score:.1f}" if trace.final_score is not None else ""
-        option = f"{i+1}. {scenario_name} - {trace.persona} - {timestamp} {score_info}"
+
+        # Check if manually stopped
+        manually_stopped = trace.metadata.get("manually_stopped", False)
+        status = "⏹️ Stopped" if manually_stopped else "✅ Completed"
+
+        option = f"{i+1}. {scenario_name} - {trace.persona} - {timestamp} {score_info} [{status}]"
         options.append(option)
 
-    selected_idx = st.selectbox(
+    # Use the trace display strings as options directly for better selection
+    selected_option = st.selectbox(
         "Select a trace to analyze:",
-        range(len(options)),
-        format_func=lambda i: options[i],
+        options,
         key="trace_selection"
     )
+
+    # Find the index of the selected option
+    selected_idx = options.index(selected_option)
 
     return trace_history[selected_idx]
 
@@ -134,50 +144,94 @@ def _display_trace_info(trace):
             if trace.final_score is not None:
                 st.metric("Score", f"{trace.final_score:.1f}")
 
-            if trace.activations_captured:
-                st.metric("Activations", f"✅ Layer {trace.activation_layer}")
+            # Show completion status
+            manually_stopped = trace.metadata.get("manually_stopped", False)
+            if manually_stopped:
+                stop_round = trace.metadata.get("stop_round", "?")
+                st.metric("Status", f"⏹️ Stopped (R{stop_round})")
             else:
-                st.metric("Activations", "Not captured")
+                st.metric("Status", "✅ Completed")
+
+        # Show activations info separately
+        if trace.activations_captured:
+            if trace.activation_layers:
+                layers_str = ", ".join(map(str, trace.activation_layers))
+                st.info(f"✅ Activations captured from {len(trace.activation_layers)} layer(s): {layers_str}")
+            elif trace.activation_layer is not None:
+                st.info(f"✅ Activations captured from layer {trace.activation_layer}")
+        else:
+            st.caption("ℹ️ No activations captured yet")
 
 
-def _capture_activations(trace, selected_positions, layer_num):
+def _capture_activations(trace, selected_positions, layer_nums):
     """
-    Capture activations for selected tokens.
+    Capture activations for selected tokens from multiple layers.
 
     Args:
         trace: ConversationTrace object
         selected_positions: List of token positions
-        layer_num: Layer to capture from
+        layer_nums: List of layer numbers to capture from
     """
     if not selected_positions:
         st.warning("⚠️ No tokens selected! Please select tokens first.")
         return
 
-    with st.spinner(f"Capturing {len(selected_positions)} activations from layer {layer_num}..."):
+    if not layer_nums:
+        st.warning("⚠️ No layers selected! Please select at least one layer.")
+        return
+
+    # Validate prerequisites
+    model = get_state("model")
+    tokenizer = get_state("tokenizer")
+    device = get_state("device")
+
+    if model is None:
+        st.error("❌ No model loaded! Please load a model in the Setup tab first.")
+        return
+
+    if not trace.formatted_prompt:
+        st.error("❌ No formatted prompt in trace! This trace may be incomplete.")
+        return
+
+    layer_text = f"{len(layer_nums)} layer(s): {layer_nums}" if len(layer_nums) > 1 else f"layer {layer_nums[0]}"
+    with st.spinner(f"Capturing {len(selected_positions)} activations from {layer_text}..."):
         try:
             # Initialize activation engine
             engine = ActivationEngine(
-                model=get_state("model"),
-                tokenizer=get_state("tokenizer"),
-                device=get_state("device")
+                model=model,
+                tokenizer=tokenizer,
+                device=device
             )
 
-            # Capture activations
-            activations = engine.capture_activations(
+            # Capture activations from multiple layers
+            activations_by_layer = engine.capture_activations_multiple_layers(
                 trace=trace,
                 token_positions=selected_positions,
-                layer=layer_num,
-                use_cache=True
+                layers=layer_nums
             )
 
             # Store in session state
-            set_state("current_activations", activations)
-            set_state("current_layer", layer_num)
+            set_state("current_activations_multilayer", activations_by_layer)
+            set_state("current_layers", layer_nums)
+
+            # For backward compatibility, also set default single layer
+            # Use middle layer as default
+            default_layer = layer_nums[len(layer_nums) // 2]
+            set_state("current_activations", activations_by_layer.get(default_layer, {}))
+            set_state("current_layer", default_layer)
 
             # Clear GPU cache to free memory
-            clear_gpu_cache(get_state("device"))
+            clear_gpu_cache(device)
 
-            st.success(f"✅ Captured {len(activations)} activations from layer {layer_num}!")
+            st.success(f"✅ Captured {len(selected_positions)} activations from {len(layer_nums)} layer(s)!")
+
+            # Show breakdown by layer
+            with st.expander("📊 Capture Details"):
+                for layer in sorted(layer_nums):
+                    count = len(activations_by_layer.get(layer, {}))
+                    st.write(f"- Layer {layer}: {count} activations")
+
+            st.info(f"💡 The Oracle Query interface is now available below. Scroll down to see it!")
 
         except Exception as e:
             st.error(f"❌ Error capturing activations: {e}")
@@ -187,12 +241,35 @@ def _capture_activations(trace, selected_positions, layer_num):
 
 
 def _render_oracle_interface():
-    """Render oracle Q&A interface"""
-    activations = get_state("current_activations")
+    """Render oracle Q&A interface with layer selection"""
+    multilayer_activations = get_state("current_activations_multilayer")
 
-    if not activations:
+    if not multilayer_activations:
+        # Fallback to old single-layer format for backward compatibility
+        activations = get_state("current_activations")
+        if not activations:
+            st.info("No activations captured yet.")
+            return
+        # Use current_layer for backward compat
+        current_layer = get_state("current_layer")
+        multilayer_activations = {current_layer: activations} if current_layer is not None else {}
+
+    if not multilayer_activations:
         st.info("No activations captured yet.")
         return
+
+    available_layers = sorted(multilayer_activations.keys())
+
+    # Layer selector for oracle queries
+    st.write("**Select Layer for Oracle Query:**")
+    selected_layer = st.selectbox(
+        "Layer",
+        options=available_layers,
+        format_func=lambda x: f"Layer {x} ({len(multilayer_activations[x])} activations)",
+        help="Choose which layer's activations to query"
+    )
+
+    activations = multilayer_activations[selected_layer]
 
     try:
         # Initialize oracle interface
@@ -204,6 +281,9 @@ def _render_oracle_interface():
             injection_layer=1,
             steering_coefficient=1.0
         )
+
+        # Show currently selected layer
+        st.caption(f"🔍 Querying activations from Layer {selected_layer}")
 
         # Render oracle chat component
         chat = OracleChat(oracle, activations)

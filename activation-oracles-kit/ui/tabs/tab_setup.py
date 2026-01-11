@@ -20,6 +20,7 @@ from core.model_manager import (
     estimate_vram_usage
 )
 from scenarios.world_llm import WorldLLM, get_recommended_models
+from scenarios.patient_llm import PatientLLM, get_recommended_patient_models
 from ui.state_manager import update_state, is_model_loaded, is_world_llm_configured
 
 
@@ -90,6 +91,19 @@ def render():
     if st.button("🚀 Load Model", type="primary", use_container_width=True):
         with st.spinner(f"Loading {model_name}... This may take a minute."):
             try:
+                # Unload existing model first to free memory
+                if st.session_state.get("model") is not None:
+                    st.info("Unloading previous model...")
+                    import torch
+                    del st.session_state["model"]
+                    del st.session_state["tokenizer"]
+                    if st.session_state.get("device"):
+                        from core.model_manager import clear_gpu_cache
+                        clear_gpu_cache(st.session_state["device"])
+                    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                    import gc
+                    gc.collect()
+
                 # Load model and tokenizer
                 model, tokenizer, device = load_model_and_tokenizer(
                     model_name=model_name,
@@ -98,7 +112,7 @@ def render():
 
                 # Load oracle adapter
                 oracle_checkpoint = get_oracle_checkpoint(model_name)
-                adapter_name = load_oracle_adapter(model, oracle_checkpoint)
+                model, adapter_name = load_oracle_adapter(model, oracle_checkpoint)
 
                 # Update state
                 update_state({
@@ -192,13 +206,69 @@ def render():
                 st.warning("Please enter an API key first")
             else:
                 world_llm = WorldLLM(api_key=api_key, model=openrouter_model)
+                # Also initialize patient_llm with saved model
+                patient_model = st.session_state.get("patient_llm_model", "anthropic/claude-3-5-haiku")
+                patient_llm = PatientLLM(api_key=api_key, model=patient_model)
                 update_state({
                     "openrouter_api_key": api_key,
                     "openrouter_model": openrouter_model,
                     "world_llm": world_llm,
+                    "patient_llm": patient_llm,
                     "setup_complete": True
                 })
                 st.success("✅ Configuration saved!")
+
+    st.divider()
+
+    # Patient LLM Configuration
+    st.subheader("3. Patient LLM (Patient Simulation)")
+
+    st.markdown("""
+    The Patient LLM provides natural patient dialogue (separate from World LLM game master).
+    This instance does not have access to privileged information.
+    """)
+
+    # Get recommended patient models
+    patient_recommended = get_recommended_patient_models()
+    patient_model_options = {
+        f"{info['id']} ({info['cost']})": info['id']
+        for name, info in patient_recommended.items()
+    }
+
+    patient_selected_display = st.selectbox(
+        "Patient LLM Model",
+        list(patient_model_options.keys()),
+        index=0,
+        help="Model for patient dialogue (optimized for natural conversation)"
+    )
+    patient_model = patient_model_options[patient_selected_display]
+
+    # Show model description
+    for name, info in patient_recommended.items():
+        if info['id'] == patient_model:
+            st.caption(f"ℹ️ {info['description']}")
+            break
+
+    # Initialize patient LLM button
+    if st.button("🔄 Initialize Patient LLM", use_container_width=True):
+        if not api_key:
+            st.warning("Please configure OpenRouter API key first (section 2)")
+        else:
+            with st.spinner("Initializing Patient LLM..."):
+                try:
+                    patient_llm = PatientLLM(api_key=api_key, model=patient_model)
+                    success = patient_llm.test_connection()
+
+                    if success:
+                        st.success("✅ Patient LLM initialized successfully!")
+                        update_state({
+                            "patient_llm_model": patient_model,
+                            "patient_llm": patient_llm
+                        })
+                    else:
+                        st.error("❌ Patient LLM initialization failed")
+                except Exception as e:
+                    st.error(f"❌ Error initializing Patient LLM: {e}")
 
     st.divider()
 
@@ -232,6 +302,8 @@ def render():
             "model_name": st.session_state.get("model_name", ""),
             "device": str(st.session_state.get("device", "")),
             "oracle_adapter": st.session_state.get("oracle_adapter_name", ""),
-            "world_llm_configured": is_world_llm_configured(),
+            "world_llm_configured": st.session_state.get("world_llm") is not None,
             "world_llm_model": st.session_state.get("openrouter_model", ""),
+            "patient_llm_configured": st.session_state.get("patient_llm") is not None,
+            "patient_llm_model": st.session_state.get("patient_llm_model", ""),
         })

@@ -25,12 +25,17 @@ def init_session_state():
         "openrouter_model": "anthropic/claude-3.5-sonnet",
         "world_llm": None,
 
+        # Patient LLM state (separate instance for patient simulation)
+        "patient_llm_model": "anthropic/claude-3-5-haiku",
+        "patient_llm": None,
+
         # Scenario state
         "current_scenario": None,
         "available_scenarios": [],
 
         # Conversation state
         "current_trace": None,
+        "current_trace_saved": False,  # Flag to prevent duplicate trace saves
         "trace_history": [],
         "scenario_messages": [],  # Messages for current scenario
 
@@ -42,6 +47,9 @@ def init_session_state():
         "selected_token_positions": set(),
         "current_activations": {},
         "current_layer": None,
+        "current_activations_multilayer": {},  # Dict[layer -> activations]
+        "current_layers": [],  # List of captured layers
+        "capture_layers": [],  # Layers to capture (temp)
         "cached_activations": {},
         "oracle_chat_history": [],
         "trigger_capture": False,
@@ -117,10 +125,11 @@ def is_model_loaded() -> bool:
 
 
 def is_world_llm_configured() -> bool:
-    """Check if World LLM is configured"""
+    """Check if World LLM and Patient LLM are configured"""
     return (
         st.session_state.get("openrouter_api_key", "") != "" and
-        st.session_state.get("world_llm") is not None
+        st.session_state.get("world_llm") is not None and
+        st.session_state.get("patient_llm") is not None
     )
 
 

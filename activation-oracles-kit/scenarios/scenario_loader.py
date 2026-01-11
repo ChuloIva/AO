@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from scenarios.base import BaseScenario
 from scenarios.world_llm import WorldLLM
+from scenarios.patient_llm import PatientLLM
 from scenarios.implementations.epistemic_doctor import EpistemicDoctorScenario
 
 
@@ -81,6 +82,7 @@ def validate_scenario_config(config: Dict) -> bool:
 def load_scenario(
     yaml_path: Path,
     world_llm: WorldLLM,
+    patient_llm: Optional[PatientLLM] = None,
     persona: str = "baseline"
 ) -> BaseScenario:
     """
@@ -88,7 +90,8 @@ def load_scenario(
 
     Args:
         yaml_path: Path to scenario YAML file
-        world_llm: WorldLLM instance for environment simulation
+        world_llm: WorldLLM instance for game master/referee
+        patient_llm: PatientLLM instance for patient simulation (optional)
         persona: Persona to use (default: "baseline")
 
     Returns:
@@ -111,8 +114,8 @@ def load_scenario(
 
     scenario_class = SCENARIO_CLASSES[scenario_name]
 
-    # Instantiate
-    scenario = scenario_class(config=config, world_llm=world_llm)
+    # Instantiate with both world_llm and patient_llm
+    scenario = scenario_class(config=config, world_llm=world_llm, patient_llm=patient_llm)
 
     # Set persona
     scenario.set_persona(persona)
@@ -161,6 +164,7 @@ def get_available_scenarios(library_path: Optional[Path] = None) -> List[Dict]:
 def get_scenario_by_name(
     name: str,
     world_llm: WorldLLM,
+    patient_llm: Optional[PatientLLM] = None,
     library_path: Optional[Path] = None
 ) -> Optional[BaseScenario]:
     """
@@ -169,6 +173,7 @@ def get_scenario_by_name(
     Args:
         name: Scenario name
         world_llm: WorldLLM instance
+        patient_llm: PatientLLM instance (optional)
         library_path: Path to scenario library
 
     Returns:
@@ -178,6 +183,6 @@ def get_scenario_by_name(
 
     for scenario_info in scenarios:
         if scenario_info["name"] == name:
-            return load_scenario(scenario_info["file"], world_llm)
+            return load_scenario(scenario_info["file"], world_llm, patient_llm)
 
     return None

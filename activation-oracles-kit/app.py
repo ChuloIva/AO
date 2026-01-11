@@ -11,7 +11,14 @@ Core features:
 
 import streamlit as st
 import sys
+import logging
 from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))

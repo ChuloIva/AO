@@ -66,9 +66,13 @@ class ConversationTrace:
 
     # Phase 2: Activation capture metadata
     activations_captured: bool = False
-    activation_layer: Optional[int] = None
+    activation_layer: Optional[int] = None  # Deprecated - kept for backward compat
     activation_positions: List[int] = field(default_factory=list)
-    activation_file_path: Optional[str] = None
+    activation_file_path: Optional[str] = None  # Deprecated - kept for backward compat
+
+    # Multi-layer activation capture (new)
+    activation_layers: List[int] = field(default_factory=list)
+    activation_file_paths: Dict[int, str] = field(default_factory=dict)  # layer -> path
 
     def add_message(self, role: str, content: str) -> Message:
         """Add a message to the conversation"""
@@ -113,7 +117,10 @@ class ConversationTrace:
             "activations_captured": self.activations_captured,
             "activation_layer": self.activation_layer,
             "activation_positions": self.activation_positions,
-            "activation_file_path": self.activation_file_path
+            "activation_file_path": self.activation_file_path,
+            # Multi-layer activation metadata
+            "activation_layers": self.activation_layers,
+            "activation_file_paths": self.activation_file_paths
         }
 
         with open(path, 'w') as f:
@@ -146,8 +153,19 @@ class ConversationTrace:
             activations_captured=data.get("activations_captured", False),
             activation_layer=data.get("activation_layer"),
             activation_positions=data.get("activation_positions", []),
-            activation_file_path=data.get("activation_file_path")
+            activation_file_path=data.get("activation_file_path"),
+            # Multi-layer activation metadata (with migration from old format)
+            activation_layers=data.get("activation_layers", []),
+            activation_file_paths=data.get("activation_file_paths", {})
         )
+
+        # Migrate old single-layer format to multi-layer if needed
+        if trace.activation_layer is not None and not trace.activation_layers:
+            trace.activation_layers = [trace.activation_layer]
+        if trace.activation_file_path and not trace.activation_file_paths and trace.activation_layer is not None:
+            trace.activation_file_paths = {trace.activation_layer: trace.activation_file_path}
+
+        return trace
 
     def get_messages_as_dicts(self) -> List[Dict[str, str]]:
         """Get messages in format suitable for model input"""

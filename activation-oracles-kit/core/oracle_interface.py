@@ -197,6 +197,15 @@ class OracleInterface:
         # Truncate if necessary
         activation_tensors = activation_tensors[:len(placeholder_positions)]
 
+        # Stack into 2D tensor: (num_activations, d_model)
+        # The hook expects vectors to be a list of 2D tensors (one per batch item)
+        activation_tensor_2D = torch.stack(activation_tensors)  # Shape: (K, d_model)
+
+        logger.info(f"Prepared {len(activation_tensors)} activations for injection")
+        logger.info(f"  Individual activation shape: {activation_tensors[0].shape}")
+        logger.info(f"  Stacked tensor shape: {activation_tensor_2D.shape}")
+        logger.info(f"  Placeholder positions: {placeholder_positions}")
+
         # Create injection hook
         try:
             injection_module = get_layer_module(
@@ -208,9 +217,11 @@ class OracleInterface:
             logger.error(f"Failed to get injection layer: {e}")
             raise
 
+        # CRITICAL: vectors must be a list of 2D tensors, not a list of lists
+        # For batch size 1, we pass a single 2D tensor wrapped in a list
         hook_fn = get_hf_activation_steering_hook(
-            vectors=[activation_tensors],  # Batch size 1
-            positions=[placeholder_positions],
+            vectors=[activation_tensor_2D],  # List containing one 2D tensor (K, d_model)
+            positions=[placeholder_positions],  # List containing one list of positions
             steering_coefficient=self.steering_coefficient,
             device=self.device,
             dtype=self.model.dtype

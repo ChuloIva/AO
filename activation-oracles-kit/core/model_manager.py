@@ -285,25 +285,41 @@ def load_model_and_tokenizer(
     return model, tokenizer, device_obj
 
 
-def load_oracle_adapter(model: AutoModelForCausalLM, oracle_path: str) -> str:
+def load_oracle_adapter(model: AutoModelForCausalLM, oracle_path: str) -> tuple[AutoModelForCausalLM, str]:
     """
     Load oracle LoRA adapter.
 
     Args:
-        model: The base model (must be a PeftModel)
+        model: The base model
         oracle_path: HuggingFace path to oracle checkpoint
 
     Returns:
-        Name of the loaded adapter (sanitized)
+        Tuple of (wrapped_model, adapter_name)
     """
+    from peft import PeftModel
+
     # Sanitize adapter name (replace dots with underscores)
     adapter_name = oracle_path.replace("/", "_").replace(".", "_")
 
-    # Load adapter if not already loaded
-    if not hasattr(model, 'peft_config') or adapter_name not in model.peft_config:
-        model.load_adapter(oracle_path, adapter_name=adapter_name)
+    # Check if model is already a PEFT model
+    if hasattr(model, 'peft_config') and adapter_name in model.peft_config:
+        return model, adapter_name
 
-    return adapter_name
+    # Wrap model with PEFT adapter
+    # Use PeftModel.from_pretrained to get the correct model structure
+    if not hasattr(model, 'peft_config'):
+        # First time loading adapter - wrap the model
+        wrapped_model = PeftModel.from_pretrained(
+            model,
+            oracle_path,
+            adapter_name=adapter_name,
+            is_trainable=False
+        )
+        return wrapped_model, adapter_name
+    else:
+        # Model already has adapters, add another one
+        model.load_adapter(oracle_path, adapter_name=adapter_name, is_trainable=False)
+        return model, adapter_name
 
 
 def get_available_models() -> List[str]:

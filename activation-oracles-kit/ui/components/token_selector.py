@@ -24,40 +24,92 @@ class TokenSelector:
         self.trace = trace
         self.tokenizer = tokenizer
 
-    def render(self) -> Tuple[List[int], int]:
+    def render(self) -> Tuple[List[int], List[int]]:
         """
         Render token selection UI.
 
         Returns:
-            Tuple of (selected_positions, layer_number)
+            Tuple of (selected_positions, layer_numbers)
         """
         st.subheader("Token Selection")
 
-        # Layer selection
-        col1, col2 = st.columns([3, 1])
+        # Multi-layer selection
+        st.write("**Layer Selection:**")
 
-        with col1:
-            layer_percent = st.slider(
-                "Layer to capture (% of model depth)",
-                min_value=25,
-                max_value=75,
-                value=50,
-                step=25,
-                help="50% = middle layer (recommended for oracle queries)"
-            )
-
-        # Calculate actual layer number
         model_info = SUPPORTED_MODELS.get(self.trace.model_name, {})
         total_layers = model_info.get("layers", 28)  # Default to Qwen3-1.7B
 
-        layer_num = calculate_layer_from_percent(
-            self.trace.model_name,
-            layer_percent,
-            total_layers
-        )
+        # Checkboxes for common layers
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            layer_25_percent = 25
+            layer_25 = calculate_layer_from_percent(self.trace.model_name, layer_25_percent, total_layers)
+            select_25 = st.checkbox(
+                f"25% (Layer {layer_25})",
+                value=False,
+                help="Early layer - surface features"
+            )
 
         with col2:
-            st.metric("Layer", f"{layer_num} / {total_layers}")
+            layer_50_percent = 50
+            layer_50 = calculate_layer_from_percent(self.trace.model_name, layer_50_percent, total_layers)
+            select_50 = st.checkbox(
+                f"50% (Layer {layer_50})",
+                value=True,
+                help="Middle layer - recommended for oracle queries"
+            )
+
+        with col3:
+            layer_75_percent = 75
+            layer_75 = calculate_layer_from_percent(self.trace.model_name, layer_75_percent, total_layers)
+            select_75 = st.checkbox(
+                f"75% (Layer {layer_75})",
+                value=False,
+                help="Deep layer - abstract representations"
+            )
+
+        # Collect selected layers
+        selected_layers = []
+        if select_25:
+            selected_layers.append(layer_25)
+        if select_50:
+            selected_layers.append(layer_50)
+        if select_75:
+            selected_layers.append(layer_75)
+
+        # Advanced: Custom layer selection
+        with st.expander("🔧 Advanced: Custom Layers"):
+            custom_layers_text = st.text_input(
+                "Enter layer numbers (comma-separated)",
+                placeholder="e.g., 5,10,15,20",
+                help="Specify exact layer numbers to capture (max 5 layers)"
+            )
+
+            if custom_layers_text:
+                try:
+                    custom_layers = [int(x.strip()) for x in custom_layers_text.split(",")]
+                    # Validate layers
+                    invalid = [l for l in custom_layers if l < 0 or l >= total_layers]
+                    if invalid:
+                        st.error(f"❌ Invalid layers: {invalid}. Must be 0-{total_layers-1}")
+                    elif len(custom_layers) > 5:
+                        st.error(f"❌ Too many layers ({len(custom_layers)}). Maximum 5 layers allowed.")
+                    else:
+                        selected_layers = custom_layers
+                        st.success(f"✅ Using custom layers: {selected_layers}")
+                except ValueError:
+                    st.error("❌ Invalid format. Use comma-separated integers (e.g., 5,10,15)")
+
+        # Validate and display selection
+        if not selected_layers:
+            st.warning("⚠️ No layers selected. Please select at least one layer.")
+        elif len(selected_layers) > 5:
+            st.error(f"❌ Too many layers selected ({len(selected_layers)}). Maximum 5 layers allowed.")
+            selected_layers = selected_layers[:5]
+            st.info(f"ℹ️ Limited to first 5 layers: {selected_layers}")
+        else:
+            st.info(f"📊 Will capture from {len(selected_layers)} layer(s): {selected_layers}")
 
         st.divider()
 
@@ -105,8 +157,14 @@ class TokenSelector:
         # Decode tokens
         token_texts = decode_token_by_token(self.tokenizer, self.trace.token_ids)
 
-        # Display tokens grouped by message
-        self._render_token_grid(token_texts, selected)
+        # Check if we have any token mappings
+        has_mappings = len(self.trace.message_to_tokens) > 0
+
+        # Display tokens grouped by message (or all tokens if no mapping)
+        if has_mappings:
+            self._render_token_grid(token_texts, selected)
+        else:
+            self._render_all_tokens(token_texts, selected)
 
         # Show selection summary
         st.divider()
@@ -116,12 +174,26 @@ class TokenSelector:
             st.info("No tokens selected. Use quick select buttons or click individual tokens below.")
 
         # Capture button
-        if selected:
+        if selected and selected_layers:
             if st.button("🔬 Capture Activations", type="primary", use_container_width=True):
                 st.session_state["trigger_capture"] = True
+                st.session_state["capture_layers"] = selected_layers
                 st.rerun()
 
-        return list(selected), layer_num
+        return list(selected), selected_layers
+
+    def _render_all_tokens(self, token_texts: List[str], selected: set):
+        """
+        Render all tokens when no message mapping is available.
+
+        Args:
+            token_texts: List of token text strings
+            selected: Set of selected token positions (modified in-place)
+        """
+        st.info("💡 Token-to-message mapping not available. Click tokens below to select them.")
+
+        # Create a visual token selector with clickable tokens
+        self._render_clickable_tokens(token_texts, selected, group_name="all")
 
     def _render_token_grid(self, token_texts: List[str], selected: set):
         """
@@ -139,48 +211,141 @@ class TokenSelector:
                 continue
 
             start, end = token_range
+            num_tokens = end - start
 
             # Message header
             role_emoji = {
                 "user": "👤",
                 "assistant": "🤖",
+                "patient": "🤒",
                 "world": "🌍",
                 "system": "⚙️"
             }.get(msg.role, "💬")
 
-            with st.expander(f"{role_emoji} **{msg.role.upper()}** (tokens {start}-{end-1})", expanded=(msg_idx >= len(self.trace.messages) - 2)):
+            with st.expander(f"{role_emoji} **{msg.role.upper()}** - {num_tokens} tokens (positions {start}-{end-1})", expanded=(msg_idx >= len(self.trace.messages) - 2)):
                 # Show message preview
-                preview = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
-                st.caption(preview)
+                preview = msg.content[:150] + "..." if len(msg.content) > 150 else msg.content
+                st.markdown(f"*{preview}*")
 
-                # Create token checkboxes
-                # Use a simpler approach: multiselect
-                token_options = {}
-                for pos in range(start, min(end, len(token_texts))):
-                    token_text = token_texts[pos].replace("\n", "\\n")
-                    # Truncate long tokens
-                    if len(token_text) > 20:
-                        token_text = token_text[:17] + "..."
-                    token_options[pos] = f"[{pos}] {token_text}"
+                st.write("")  # Spacing
 
-                # Use session state key unique to this message
-                selected_in_msg = st.multiselect(
-                    f"Select tokens from {msg.role}",
-                    options=list(token_options.keys()),
-                    default=[p for p in selected if p in token_options],
-                    format_func=lambda p: token_options[p],
-                    key=f"token_select_msg_{msg_idx}"
+                # Per-message quick select buttons
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    if st.button("Select All", key=f"select_all_{msg_idx}", use_container_width=True):
+                        for pos in range(start, end):
+                            selected.add(pos)
+                        st.rerun()
+
+                with col2:
+                    if st.button("Last 5", key=f"last5_{msg_idx}", use_container_width=True):
+                        for pos in range(max(start, end - 5), end):
+                            selected.add(pos)
+                        st.rerun()
+
+                with col3:
+                    if st.button("First 5", key=f"first5_{msg_idx}", use_container_width=True):
+                        for pos in range(start, min(start + 5, end)):
+                            selected.add(pos)
+                        st.rerun()
+
+                with col4:
+                    if st.button("Clear", key=f"clear_{msg_idx}", use_container_width=True):
+                        for pos in range(start, end):
+                            selected.discard(pos)
+                        st.rerun()
+
+                st.divider()
+
+                # Render clickable tokens for this message
+                self._render_clickable_tokens(
+                    token_texts,
+                    selected,
+                    start_pos=start,
+                    end_pos=min(end, len(token_texts)),
+                    group_name=f"msg_{msg_idx}"
                 )
 
-                # Update global selection
-                # Remove old selections from this message range
-                for pos in range(start, end):
-                    if pos in selected and pos not in selected_in_msg:
-                        selected.discard(pos)
+    def _render_clickable_tokens(
+        self,
+        token_texts: List[str],
+        selected: set,
+        start_pos: int = 0,
+        end_pos: Optional[int] = None,
+        group_name: str = "default"
+    ):
+        """
+        Render tokens as clickable buttons.
 
-                # Add new selections
-                for pos in selected_in_msg:
-                    selected.add(pos)
+        Args:
+            token_texts: List of all token text strings
+            selected: Set of selected token positions (modified in-place)
+            start_pos: Starting position in token_texts
+            end_pos: Ending position in token_texts (exclusive)
+            group_name: Unique name for this group of tokens
+        """
+        if end_pos is None:
+            end_pos = len(token_texts)
+
+        # Simple button grid implementation
+        self._render_button_grid(token_texts, selected, start_pos, end_pos, group_name)
+
+    def _render_button_grid(
+        self,
+        token_texts: List[str],
+        selected: set,
+        start_pos: int = 0,
+        end_pos: Optional[int] = None,
+        group_name: str = "default"
+    ):
+        """
+        Fallback button grid if st-click-detector not available.
+
+        Args:
+            token_texts: List of all token text strings
+            selected: Set of selected token positions (modified in-place)
+            start_pos: Starting position in token_texts
+            end_pos: Ending position in token_texts (exclusive)
+            group_name: Unique name for this group of tokens
+        """
+        if end_pos is None:
+            end_pos = len(token_texts)
+
+        # Render tokens in a grid using columns
+        tokens_per_row = 8
+
+        for row_start in range(start_pos, end_pos, tokens_per_row):
+            row_end = min(row_start + tokens_per_row, end_pos)
+            cols = st.columns(tokens_per_row)
+
+            for i, pos in enumerate(range(row_start, row_end)):
+                if i < len(cols):
+                    with cols[i]:
+                        token_text = token_texts[pos].replace("\n", "↵").replace("\t", "→")
+                        # Truncate very long tokens
+                        if len(token_text) > 15:
+                            display_text = token_text[:12] + "..."
+                        else:
+                            display_text = token_text
+
+                        # Create button for token selection
+                        is_selected = pos in selected
+                        button_type = "primary" if is_selected else "secondary"
+
+                        if st.button(
+                            f"{display_text}\n`{pos}`",
+                            key=f"token_{group_name}_{pos}",
+                            help=f"Token {pos}: {repr(token_text)}",
+                            type=button_type,
+                            use_container_width=True
+                        ):
+                            # Toggle selection
+                            if pos in selected:
+                                selected.discard(pos)
+                            else:
+                                selected.add(pos)
+                            st.rerun()
 
     def _get_last_assistant_tokens(self) -> Optional[Tuple[int, int]]:
         """

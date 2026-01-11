@@ -95,9 +95,11 @@ def render_scenario_selection():
             try:
                 # Load scenario
                 world_llm = get_state("world_llm")
+                patient_llm = get_state("patient_llm")
                 scenario = load_scenario(
                     selected_scenario_info["file"],
                     world_llm,
+                    patient_llm,
                     persona=selected_persona
                 )
 
@@ -118,7 +120,8 @@ def render_scenario_selection():
                     "current_scenario": scenario,
                     "current_trace": trace,
                     "scenario_messages": [],
-                    "scenario_running": True
+                    "scenario_running": True,
+                    "current_trace_saved": False  # Reset the saved flag for new scenario
                 })
 
                 st.success(f"✅ Scenario started: {scenario.name} ({selected_persona})")
@@ -134,7 +137,8 @@ def render_scenario_runner():
     """Render active scenario runner"""
     scenario = get_state("current_scenario")
     trace = get_state("current_trace")
-    messages = get_state("scenario_messages", [])
+    # Get messages and create a new list to ensure proper state tracking
+    messages = list(get_state("scenario_messages", []))
 
     if not scenario:
         st.error("No active scenario")
@@ -165,11 +169,17 @@ def render_scenario_runner():
         role = msg.get("role", "assistant")
         content = msg.get("content", "")
 
-        if role == "world":
+        if role == "patient":
+            # Patient dialogue (from PatientLLM)
+            st.chat_message("assistant", avatar="🤒").markdown(f"**💬 Patient:** {content}")
+        elif role == "world":
+            # Legacy world messages (for backward compatibility)
             st.chat_message("assistant", avatar="🏥").write(content)
         elif role == "subject":
+            # Doctor (subject LLM) actions/questions
             st.chat_message("user", avatar="👨‍⚕️").write(content)
         elif role == "info":
+            # Game state info messages
             st.info(content)
         else:
             st.chat_message(role).write(content)
@@ -184,13 +194,19 @@ def render_scenario_runner():
             summary = scenario.get_summary()
             st.json(summary)
 
-        # Save trace
-        trace.final_score = state.score
-        trace.metadata = state.metadata
+        # Save trace (only once)
+        # Check if this trace has already been saved to prevent duplicates
+        trace_saved = get_state("current_trace_saved", False)
+        if not trace_saved:
+            trace.final_score = state.score
+            trace.metadata = state.metadata
 
-        trace_history = get_state("trace_history", [])
-        trace_history.append(trace)
-        update_state({"trace_history": trace_history})
+            trace_history = get_state("trace_history", [])
+            trace_history.append(trace)
+            update_state({
+                "trace_history": trace_history,
+                "current_trace_saved": True
+            })
 
         # Buttons
         col1, col2 = st.columns(2)
@@ -199,7 +215,8 @@ def render_scenario_runner():
                 update_state({
                     "scenario_running": False,
                     "current_scenario": None,
-                    "scenario_messages": []
+                    "scenario_messages": [],
+                    "current_trace_saved": False
                 })
                 st.rerun()
 
@@ -229,6 +246,13 @@ def render_scenario_runner():
                     if m["role"] in ["world", "subject"]
                 ]
 
+                # DEBUG: Log conversation size
+                print(f"\n{'='*60}")
+                print(f"DEBUG: Total messages in scenario_messages: {len(messages)}")
+                print(f"DEBUG: Conversation messages for model: {len(conversation_messages)}")
+                for i, msg in enumerate(conversation_messages):
+                    print(f"  [{i}] {msg['role']}: {msg['content'][:50]}...")
+
                 # If no messages yet, create initial prompt
                 if not conversation_messages:
                     initial_prompt = "You are now seeing the patient. What would you like to do?"
@@ -244,6 +268,14 @@ def render_scenario_runner():
                     device=device,
                     generation_kwargs={"max_new_tokens": 256, "temperature": 0.7}
                 )
+
+                # DEBUG: Log what was actually sent to the model
+                print(f"\nDEBUG: Formatted prompt sent to model (length: {len(formatted_prompt)} chars):")
+                print(f"{formatted_prompt[:1000]}...")
+                if len(formatted_prompt) > 1000:
+                    print(f"... [truncated, showing first 1000/{len(formatted_prompt)} chars]")
+                print(f"\nDEBUG: Model response: {response[:100]}...")
+                print(f"{'='*60}\n")
 
                 # Add to messages
                 messages.append({"role": "subject", "content": response})
@@ -262,14 +294,17 @@ def render_scenario_runner():
                     messages.append({"role": "world", "content": world_response})
                     trace.add_message("world", world_response)
 
+                    # Note: World messages are not tokenized in the trace since they come
+                    # from the World LLM, not the subject model
+
                 # Add any info messages
                 for info_msg in result.get("messages", []):
                     if info_msg.get("role") == "info":
                         messages.append(info_msg)
 
-                # Update state
+                # Update state (create new list to ensure Streamlit detects the change)
                 update_state({
-                    "scenario_messages": messages,
+                    "scenario_messages": list(messages),
                     "current_trace": trace,
                     "current_scenario": scenario
                 })
@@ -297,7 +332,7 @@ def render_scenario_runner():
                     trace.add_message("world", world_response)
 
                 update_state({
-                    "scenario_messages": messages,
+                    "scenario_messages": list(messages),
                     "current_trace": trace,
                     "current_scenario": scenario
                 })
@@ -305,11 +340,70 @@ def render_scenario_runner():
 
     st.divider()
 
-    # Stop button
-    if st.button("⏹️ Stop Scenario", type="secondary"):
+    # Stop & Save button
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.caption("💡 Stopping will save the current trace for analysis")
+
+    with col2:
+        if st.button("⏹️ Stop & Save", type="secondary", use_container_width=True):
+            _stop_and_save_scenario()
+            st.rerun()
+
+
+def _stop_and_save_scenario():
+    """Stop scenario and save trace to history"""
+    scenario = get_state("current_scenario")
+    trace = get_state("current_trace")
+
+    if not trace:
+        # No trace to save, just reset
+        _reset_scenario_state()
+        return
+
+    # Check if already saved (prevent duplicates)
+    already_saved = get_state("current_trace_saved", False)
+
+    if not already_saved:
+        # Mark trace as manually stopped (not completed)
+        state = scenario.get_state() if scenario else None
+
+        if state:
+            trace.final_score = state.score
+            trace.metadata = state.metadata.copy() if state.metadata else {}
+        else:
+            trace.metadata = {}
+
+        # Add flag indicating manual stop
+        trace.metadata["manually_stopped"] = True
+        trace.metadata["completed_naturally"] = False
+        trace.metadata["stop_round"] = state.round if state else 0
+
+        # Save to trace history
+        trace_history = get_state("trace_history", [])
+        trace_history.append(trace)
+
         update_state({
-            "scenario_running": False,
-            "current_scenario": None,
-            "scenario_messages": []
+            "trace_history": trace_history,
+            "current_trace_saved": True
         })
-        st.rerun()
+
+        if state:
+            st.success(f"✅ Trace saved! Round {state.round}, Score: {state.score:.1f}")
+        else:
+            st.success(f"✅ Trace saved!")
+
+    # Reset scenario state
+    _reset_scenario_state()
+
+
+def _reset_scenario_state():
+    """Clear scenario state"""
+    update_state({
+        "scenario_running": False,
+        "current_scenario": None,
+        "scenario_messages": [],
+        "current_trace": None,
+        "current_trace_saved": False
+    })

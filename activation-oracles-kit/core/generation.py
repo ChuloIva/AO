@@ -50,6 +50,9 @@ def generate_response(
         # Insert system message at the beginning
         formatted_messages.insert(0, {"role": "system", "content": system_prompt})
 
+    # DEBUG: Log message count
+    print(f"[generation.py] Formatting {len(formatted_messages)} messages (including system)")
+
     # Apply chat template
     try:
         formatted_prompt = tokenizer.apply_chat_template(
@@ -63,7 +66,16 @@ def generate_response(
         formatted_prompt = format_messages_simple(formatted_messages)
 
     # Tokenize
-    inputs = tokenizer(formatted_prompt, return_tensors="pt").to(device)
+    inputs = tokenizer(formatted_prompt, return_tensors="pt", truncation=False).to(device)
+
+    # DEBUG: Check if context is being truncated
+    num_input_tokens = inputs["input_ids"].shape[1]
+    print(f"[generation.py] Input tokens: {num_input_tokens}")
+    if hasattr(model.config, 'max_position_embeddings'):
+        max_pos = model.config.max_position_embeddings
+        print(f"[generation.py] Model max position embeddings: {max_pos}")
+        if num_input_tokens > max_pos:
+            print(f"[generation.py] WARNING: Input ({num_input_tokens}) exceeds model max ({max_pos})!")
 
     # Generate
     with torch.no_grad():
@@ -106,20 +118,37 @@ def format_messages_simple(messages: List[Dict[str, str]]) -> str:
 def prepare_for_replay(
     tokenizer: AutoTokenizer,
     formatted_prompt: str,
-    device: torch.device
+    device: torch.device,
+    token_ids: List[int] = None
 ) -> Dict[str, torch.Tensor]:
     """
     Prepare formatted prompt for replay (activation capture).
 
+    IMPORTANT: To capture activations from generated tokens, you must pass
+    the full token_ids (prompt + generated tokens) from the original generation.
+    Otherwise, re-tokenizing the formatted_prompt will only give you the prompt tokens.
+
     Args:
         tokenizer: The tokenizer
-        formatted_prompt: Previously generated formatted prompt
+        formatted_prompt: Previously generated formatted prompt (fallback if token_ids not provided)
         device: Device to use
+        token_ids: Full token IDs from original generation (prompt + generated tokens).
+                   If provided, this is used instead of re-tokenizing formatted_prompt.
 
     Returns:
         Tokenized inputs ready for model
     """
-    inputs = tokenizer(formatted_prompt, return_tensors="pt").to(device)
+    if token_ids is not None:
+        # Use exact token IDs from original generation
+        # This ensures we replay the FULL sequence including generated tokens
+        inputs = {
+            "input_ids": torch.tensor([token_ids], dtype=torch.long).to(device),
+            "attention_mask": torch.ones((1, len(token_ids)), dtype=torch.long).to(device)
+        }
+    else:
+        # Fallback: re-tokenize the prompt (will NOT include generated tokens)
+        inputs = tokenizer(formatted_prompt, return_tensors="pt").to(device)
+
     return inputs
 
 

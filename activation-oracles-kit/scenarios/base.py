@@ -59,6 +59,7 @@ class BaseScenario(ABC):
 
         # Prompts
         self.world_llm_base_prompt = config.get("world_llm_prompt", "")
+        self.patient_llm_base_prompt = config.get("patient_llm_prompt", "")
         self.subject_llm_base_prompt = config.get("subject_llm_base_prompt", "")
         self.persona_modifiers = config.get("personas", {})
 
@@ -149,6 +150,22 @@ class BaseScenario(ABC):
         world_prompt = self._apply_template_vars(world_prompt)
 
         return world_prompt
+
+    def get_patient_prompt(self) -> str:
+        """
+        Get patient LLM prompt (without privileged world info).
+        Override in subclasses for scenario-specific prompts.
+
+        Returns:
+            System prompt for patient LLM
+        """
+        patient_prompt = self.patient_llm_base_prompt
+
+        # Replace template variables if prompt exists
+        if patient_prompt:
+            patient_prompt = self._apply_template_vars(patient_prompt)
+
+        return patient_prompt
 
     def _apply_template_vars(self, prompt: str) -> str:
         """

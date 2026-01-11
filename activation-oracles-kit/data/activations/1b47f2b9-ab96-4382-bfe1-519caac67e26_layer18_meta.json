@@ -1,0 +1,47 @@
+{
+  "355": {
+    "layer": 18,
+    "token_position": 355,
+    "token_text": " I",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "356": {
+    "layer": 18,
+    "token_position": 356,
+    "token_text": " need",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "357": {
+    "layer": 18,
+    "token_position": 357,
+    "token_text": " to",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "358": {
+    "layer": 18,
+    "token_position": 358,
+    "token_text": " prioritize",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  },
+  "359": {
+    "layer": 18,
+    "token_position": 359,
+    "token_text": " tests",
+    "message_idx": -1,
+    "activation_shape": [
+      2560
+    ]
+  }
+}
