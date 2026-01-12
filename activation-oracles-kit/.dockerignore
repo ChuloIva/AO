@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Data and models (will be downloaded fresh in RunPod)
+data/
+models/
+*.pth
+*.pt
+*.bin
+*.safetensors
+
+# Logs
+*.log
+logs/
+
+# Tests
+tests/
+.pytest_cache/
+
+# Documentation
+*.md
+!README.md
+docs/
