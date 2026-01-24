@@ -1,0 +1,81 @@
+name: "Multi-Persona Problem Solver"
+description: "Solve diverse problems by simulating multiple collaborative personas"
+category: "Multi-Agent Problem Solving"
+
+# Subject LLM base prompt - instructs the LLM to simulate multiple personas
+subject_llm_base_prompt: |
+  You will be given various problems to solve. For each problem, you should:
+
+  1. Simulate a group of thinkers with DISTINCT personas collaborating
+  2. Each persona should have a unique perspective and thinking style
+  3. Let them discuss, disagree, and explore different approaches
+  4. Reach a group consensus on the final solution
+
+  Use this exact format:
+
+  <cast_of_characters>
+  <persona1> [Description of first thinker's traits] </persona1>
+  <persona2> [Description of second thinker's traits] </persona2>
+  <persona3> [Description of third thinker's traits] </persona3>
+  </cast_of_characters>
+
+  <conversation>
+  <think1> [First persona's thought] </think1>
+  <think2> [Second persona's thought] </think2>
+  <think3> [Third persona's thought] </think3>
+  <think1> [First persona responds] </think1>
+  ... (continue with natural back-and-forth)
+  </conversation>
+
+  <group_consensus>
+  [Final agreed solution]
+  </group_consensus>
+
+  IMPORTANT:
+  - Personas should have genuinely different perspectives
+  - Disagreements and challenges are encouraged
+  - Don't be overly polite - focus on solving the problem
+  - Each persona should contribute multiple times
+
+# Five diverse tasks - LLM creates its own personas
+tasks:
+  # Task 1: Math/Arithmetic (like Countdown in the paper)
+  - type: "arithmetic"
+    problem: "Using the numbers {25, 50, 75, 3, 6, 7}, reach the target 483 using basic operations (+, -, ×, ÷). Each number can be used at most once."
+    num_personas: 3
+
+  # Task 2: Creative/Divergent thinking
+  - type: "creative"
+    problem: "Design a new public transportation system for a city of 500,000 people that reduces carbon emissions by 60% while being financially sustainable. Consider multiple stakeholder perspectives."
+    num_personas: 4
+
+  # Task 3: Logic puzzle
+  - type: "logic"
+    problem: "Five houses in a row, each a different color. The Brit lives in the red house. The Swede has a dog. The Dane drinks tea. The green house is immediately to the left of the white house. The green house owner drinks coffee. The person who plays polo has birds. The person in the yellow house plays hockey. The person in the center house drinks milk. The Norwegian lives in the first house. The person who plays baseball lives next to the person with cats. The person with a horse lives next to the person who plays hockey. The person who plays billiards drinks beer. The German plays soccer. The Norwegian lives next to the blue house. The person who plays baseball has a neighbor who drinks water. Who owns the fish?"
+    num_personas: 3
+
+  # Task 4: Ethical dilemma
+  - type: "ethical"
+    problem: "A self-driving car is heading toward a collision. It can either: (A) continue straight and hit 5 jaywalking pedestrians, or (B) swerve and hit 1 person legally crossing. The passengers include a doctor rushing to perform emergency surgery. What should the car's algorithm decide, and how should such decisions be encoded in AI systems?"
+    num_personas: 4
+
+  # Task 5: Open-ended strategic problem
+  - type: "strategic"
+    problem: "A company's flagship product is declining in market share. User research shows younger demographics prefer competitor products. The board is split between: investing $50M in redesigning the product, acquiring a competitor for $200M, or pivoting to an adjacent market. Each option has significant risks. What should the company do?"
+    num_personas: 4
+
+# Personas (optional personality modifiers for the subject LLM)
+personas:
+  baseline: ""
+
+  creative: |
+    PERSONALITY MODIFIER: You tend to generate highly creative and unconventional personas.
+    Your simulated characters often challenge assumptions and propose novel solutions.
+
+  analytical: |
+    PERSONALITY MODIFIER: You tend to generate highly analytical and detail-oriented personas.
+    Your simulated characters focus on systematic reasoning and evidence-based arguments.
+
+  diverse: |
+    PERSONALITY MODIFIER: You maximize diversity in your simulated personas.
+    Ensure each character has genuinely distinct values, priorities, and reasoning styles.

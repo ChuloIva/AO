@@ -11,6 +11,7 @@ from scenarios.patient_llm import PatientLLM
 from scenarios.implementations.epistemic_doctor import EpistemicDoctorScenario
 from scenarios.implementations.therapist import TherapistScenario
 from scenarios.implementations.simple_therapist import SimpleTherapistScenario
+from scenarios.implementations.multi_persona_solver import MultiPersonaSolverScenario
 
 
 # Map scenario names to implementation classes
@@ -18,6 +19,7 @@ SCENARIO_CLASSES = {
     "Epistemic Doctor": EpistemicDoctorScenario,
     "Therapist": TherapistScenario,
     "SimpleTherapist": SimpleTherapistScenario,
+    "Multi-Persona Problem Solver": MultiPersonaSolverScenario,
     # Add more scenarios here as they're implemented
     # "War of Attrition": WarOfAttritionScenario,
     # "Centipede Game": CentipedeGameScenario,
@@ -89,7 +91,8 @@ def load_scenario(
     yaml_path: Path,
     world_llm: WorldLLM,
     patient_llm: Optional[PatientLLM] = None,
-    persona: str = "baseline"
+    persona: str = "baseline",
+    selected_task_index: Optional[int] = None
 ) -> BaseScenario:
     """
     Load and instantiate a scenario from YAML.
@@ -99,6 +102,8 @@ def load_scenario(
         world_llm: WorldLLM instance for game master/referee
         patient_llm: PatientLLM instance for patient simulation (optional)
         persona: Persona to use (default: "baseline")
+        selected_task_index: For task-based scenarios (like Multi-Persona Solver),
+                            specifies which task to run. If None, runs all tasks.
 
     Returns:
         Instantiated scenario
@@ -113,6 +118,12 @@ def load_scenario(
     # Validate
     validate_scenario_config(config)
 
+    # If a specific task is selected, filter the tasks in config
+    if selected_task_index is not None and "tasks" in config:
+        original_tasks = config.get("tasks", [])
+        if 0 <= selected_task_index < len(original_tasks):
+            config["tasks"] = [original_tasks[selected_task_index]]
+
     # Get scenario class
     scenario_name = config["name"]
     if scenario_name not in SCENARIO_CLASSES:
@@ -125,7 +136,7 @@ def load_scenario(
     import inspect
     sig = inspect.signature(scenario_class.__init__)
     params = list(sig.parameters.keys())
-    
+
     if 'world_llm' in params and 'patient_llm' in params:
         # Traditional scenarios with world and patient LLMs
         scenario = scenario_class(config=config, world_llm=world_llm, patient_llm=patient_llm)
@@ -150,7 +161,7 @@ def get_available_scenarios(library_path: Optional[Path] = None) -> List[Dict]:
         library_path: Path to scenario library directory
 
     Returns:
-        List of dicts with scenario info
+        List of dicts with scenario info (including tasks for task-based scenarios)
     """
     if library_path is None:
         # Default to library/ directory
@@ -163,13 +174,28 @@ def get_available_scenarios(library_path: Optional[Path] = None) -> List[Dict]:
     for yaml_file in library_path.glob("*.yaml"):
         try:
             config = load_scenario_yaml(yaml_file)
-            scenarios.append({
+            scenario_info = {
                 "file": yaml_file,
                 "name": config.get("name", "Unknown"),
                 "description": config.get("description", ""),
                 "category": config.get("category", ""),
                 "personas": list(config.get("personas", {}).keys())
-            })
+            }
+
+            # Include tasks if present (for task-based scenarios like Multi-Persona Solver)
+            if "tasks" in config:
+                tasks = config.get("tasks", [])
+                scenario_info["tasks"] = [
+                    {
+                        "index": i,
+                        "type": task.get("type", "unknown"),
+                        "problem": task.get("problem", "")[:100] + "..." if len(task.get("problem", "")) > 100 else task.get("problem", ""),
+                        "num_personas": task.get("num_personas", 3)
+                    }
+                    for i, task in enumerate(tasks)
+                ]
+
+            scenarios.append(scenario_info)
         except Exception as e:
             print(f"Error loading scenario {yaml_file}: {e}")
             continue

@@ -87,5 +87,5 @@ echo "✅ Setup complete!"
 echo ""
 echo "🚀 To run the app:"
 echo "   streamlit run app.py"
-echo ""
+echo ""l
 echo "📖 For more information, see README.md"

@@ -25,9 +25,9 @@ def render():
     """Render the Scenario tab"""
     st.header("🎭 Scenarios")
 
-    # Check setup
-    if not is_model_loaded() or not is_world_llm_configured():
-        st.warning("⚠️ Please complete setup in the Setup tab first")
+    # Check setup - only model is required, world_llm is optional for some scenarios
+    if not is_model_loaded():
+        st.warning("⚠️ Please load a model in the Setup tab first")
         return
 
     st.markdown("""
@@ -87,6 +87,33 @@ def render_scenario_selection():
             help="Different personality traits for the subject LLM"
         )
 
+    # Task selection for task-based scenarios
+    selected_task_index = None
+    if "tasks" in selected_scenario_info:
+        st.divider()
+        st.subheader("Select Task")
+
+        tasks = selected_scenario_info["tasks"]
+        task_options = ["All Tasks"] + [
+            f"Task {t['index']+1}: {t['type'].capitalize()} ({t['num_personas']} personas)"
+            for t in tasks
+        ]
+
+        selected_task = st.selectbox(
+            "Task",
+            task_options,
+            index=0,
+            help="Choose a specific task or run all tasks sequentially"
+        )
+
+        # Show task details
+        if selected_task != "All Tasks":
+            task_idx = task_options.index(selected_task) - 1  # -1 because "All Tasks" is first
+            if 0 <= task_idx < len(tasks):
+                selected_task_index = task_idx
+                task_info = tasks[task_idx]
+                st.info(f"**Problem:** {task_info['problem']}")
+
     st.divider()
 
     # Start button
@@ -100,7 +127,8 @@ def render_scenario_selection():
                     selected_scenario_info["file"],
                     world_llm,
                     patient_llm,
-                    persona=selected_persona
+                    persona=selected_persona,
+                    selected_task_index=selected_task_index
                 )
 
                 # Create conversation trace
@@ -168,10 +196,14 @@ def render_scenario_runner():
     for i, msg in enumerate(messages):
         role = msg.get("role", "assistant")
         content = msg.get("content", "")
+        response_type = msg.get("response_type", "")
 
         if role == "patient":
-            # Patient dialogue (from PatientLLM)
+            # Patient dialogue (from unified World LLM)
             st.chat_message("assistant", avatar="🤒").markdown(f"**💬 Patient:** {content}")
+        elif role == "tool_result":
+            # Test results or game mechanics (from unified World LLM)
+            st.chat_message("assistant", avatar="🔬").markdown(f"**🔬 Test Result:** {content}")
         elif role == "world":
             # Legacy world messages (for backward compatibility)
             st.chat_message("assistant", avatar="🏥").write(content)
@@ -255,18 +287,26 @@ def render_scenario_runner():
 
                 # If no messages yet, create initial prompt
                 if not conversation_messages:
-                    initial_prompt = "You are now seeing the patient. What would you like to do?"
+                    # Use scenario-specific initial prompt if available
+                    if hasattr(scenario, 'get_current_task_prompt'):
+                        initial_prompt = scenario.get_current_task_prompt()
+                    elif hasattr(scenario, 'get_initial_prompt'):
+                        initial_prompt = scenario.get_initial_prompt()
+                    else:
+                        # Generic fallback for medical scenarios
+                        initial_prompt = "You are now seeing the patient. What would you like to do?"
                     conversation_messages.append({"role": "user", "content": initial_prompt})
                     messages.append({"role": "world", "content": initial_prompt})
 
                 # Generate response from subject LLM
+                # Use high max_new_tokens to support complex multi-persona outputs
                 response, token_ids, formatted_prompt = generate_response(
                     model=model,
                     tokenizer=tokenizer,
                     messages=conversation_messages,
                     system_prompt=scenario.get_subject_prompt(),
                     device=device,
-                    generation_kwargs={"max_new_tokens": 256, "temperature": 0.7}
+                    generation_kwargs={"max_new_tokens": 16384, "temperature": 0.7}
                 )
 
                 # DEBUG: Log what was actually sent to the model
@@ -288,19 +328,17 @@ def render_scenario_runner():
                 # Process action through scenario
                 result = scenario.step(response)
 
-                # Add world response
-                world_response = result.get("world_response", "")
-                if world_response:
-                    messages.append({"role": "world", "content": world_response})
-                    trace.add_message("world", world_response)
+                # Add result messages (patient dialogue, test results, info, etc.)
+                result_messages = result.get("messages", [])
+                for msg in result_messages:
+                    messages.append(msg)
+
+                    # Add to trace (except info messages)
+                    if msg.get("role") not in ["info"]:
+                        trace.add_message("world", msg.get("content", ""))
 
                     # Note: World messages are not tokenized in the trace since they come
                     # from the World LLM, not the subject model
-
-                # Add any info messages
-                for info_msg in result.get("messages", []):
-                    if info_msg.get("role") == "info":
-                        messages.append(info_msg)
 
                 # Update state (create new list to ensure Streamlit detects the change)
                 update_state({
@@ -326,10 +364,13 @@ def render_scenario_runner():
                 trace.add_message("assistant", manual_action)
 
                 result = scenario.step(manual_action)
-                world_response = result.get("world_response", "")
-                if world_response:
-                    messages.append({"role": "world", "content": world_response})
-                    trace.add_message("world", world_response)
+
+                # Add result messages
+                result_messages = result.get("messages", [])
+                for msg in result_messages:
+                    messages.append(msg)
+                    if msg.get("role") not in ["info"]:
+                        trace.add_message("world", msg.get("content", ""))
 
                 update_state({
                     "scenario_messages": list(messages),

@@ -5,6 +5,34 @@ World LLM - OpenRouter-based simulation engine for scenario environments
 import requests
 from typing import List, Dict, Optional
 import time
+import re
+
+
+class WorldLLMResponse:
+    """
+    Unified response from World LLM with type information.
+
+    The World LLM can respond in different modes:
+    - patient_dialogue: Patient speaking naturally
+    - tool_result: Test results or game mechanics
+    - evaluation: Diagnosis evaluation
+    """
+
+    def __init__(self, content: str, response_type: str, metadata: Optional[Dict] = None):
+        """
+        Initialize World LLM Response.
+
+        Args:
+            content: The actual response text
+            response_type: Type of response ("patient_dialogue", "tool_result", "evaluation")
+            metadata: Additional metadata (score changes, costs, etc.)
+        """
+        self.content = content
+        self.response_type = response_type
+        self.metadata = metadata or {}
+
+    def __str__(self):
+        return self.content
 
 
 class WorldLLM:
@@ -36,9 +64,10 @@ class WorldLLM:
         messages: List[Dict[str, str]],
         system_prompt: str,
         temperature: float = 1.0,
-        max_tokens: int = 256,
-        retry_count: int = 3
-    ) -> str:
+        max_tokens: int = 4096,
+        retry_count: int = 3,
+        use_unified_response: bool = True
+    ) -> 'WorldLLMResponse':
         """
         Generate response from World LLM.
 
@@ -48,9 +77,10 @@ class WorldLLM:
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             retry_count: Number of retries on failure
+            use_unified_response: If True, parse and return WorldLLMResponse. If False, return raw string (backward compatibility)
 
         Returns:
-            Generated response text
+            WorldLLMResponse object with parsed type and metadata
 
         Raises:
             RuntimeError: If API call fails after retries
@@ -84,7 +114,25 @@ class WorldLLM:
 
                 # Parse response
                 result = response.json()
-                return result["choices"][0]["message"]["content"]
+                raw_response = result["choices"][0]["message"]["content"]
+
+                # Parse response type and metadata
+                if use_unified_response:
+                    response_type = self._determine_response_type(raw_response)
+                    metadata = self._extract_metadata(raw_response, response_type)
+
+                    return WorldLLMResponse(
+                        content=raw_response,
+                        response_type=response_type,
+                        metadata=metadata
+                    )
+                else:
+                    # Backward compatibility: return raw string wrapped in WorldLLMResponse
+                    return WorldLLMResponse(
+                        content=raw_response,
+                        response_type="raw",
+                        metadata={}
+                    )
 
             except requests.exceptions.Timeout:
                 last_error = "Request timed out"
@@ -110,6 +158,67 @@ class WorldLLM:
         # All retries failed
         raise RuntimeError(f"World LLM API call failed after {retry_count} attempts: {last_error}")
 
+    def _determine_response_type(self, response: str) -> str:
+        """
+        Infer response type from content based on markers.
+
+        Args:
+            response: Raw response from LLM
+
+        Returns:
+            Response type: "tool_result", "evaluation", or "patient_dialogue"
+        """
+        response_upper = response.upper()
+
+        # Check for explicit markers
+        if "[TOOL_CALL]" in response_upper or "GAME ACTION:" in response_upper or "TEST RESULT:" in response_upper:
+            return "tool_result"
+        elif "[EVALUATION]" in response_upper or "DIAGNOSIS EVALUATION:" in response_upper:
+            return "evaluation"
+        else:
+            # Default: patient dialogue
+            return "patient_dialogue"
+
+    def _extract_metadata(self, response: str, response_type: str) -> Dict:
+        """
+        Extract metadata from response based on type.
+
+        Args:
+            response: Raw response text
+            response_type: Type of response
+
+        Returns:
+            Dictionary with extracted metadata
+        """
+        metadata = {}
+
+        if response_type == "tool_result":
+            # Extract cost information
+            cost_match = re.search(r'COST:\s*\$?(\d+)\s*resource', response, re.IGNORECASE)
+            if cost_match:
+                metadata["cost"] = int(cost_match.group(1))
+            else:
+                # Try alternative patterns
+                cost_match = re.search(r'\$(\d+)', response)
+                if cost_match:
+                    metadata["cost"] = int(cost_match.group(1))
+
+        elif response_type == "evaluation":
+            # Extract diagnosis correctness
+            if "CORRECT" in response.upper() or "✅" in response:
+                metadata["correct"] = True
+                metadata["score_change"] = 10  # Default positive score
+            elif "INCORRECT" in response.upper() or "❌" in response:
+                metadata["correct"] = False
+                metadata["score_change"] = -10  # Default negative score
+
+            # Try to extract specific score change
+            score_match = re.search(r'score[:\s]*([+-]?\d+)', response, re.IGNORECASE)
+            if score_match:
+                metadata["score_change"] = int(score_match.group(1))
+
+        return metadata
+
     def set_model(self, model: str):
         """
         Change World LLM model.
@@ -134,9 +243,10 @@ class WorldLLM:
             response = self.generate_response(
                 messages=[{"role": "user", "content": "Hello"}],
                 system_prompt="You are a test assistant. Respond with 'OK'.",
-                max_tokens=10
+                max_tokens=10,
+                use_unified_response=False
             )
-            return len(response) > 0
+            return len(response.content) > 0
         except Exception as e:
             print(f"Connection test failed: {e}")
             return False

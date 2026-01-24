@@ -3,8 +3,9 @@ Generation Module - Handles model generation with proper tokenization
 """
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 from typing import List, Dict, Tuple, Optional
+from threading import Thread
 
 
 def generate_response(
@@ -33,8 +34,9 @@ def generate_response(
         device = next(model.parameters()).device
 
     # Default generation kwargs
+    # Use high max_new_tokens to support complex multi-persona/multi-turn outputs
     default_kwargs = {
-        "max_new_tokens": 256,
+        "max_new_tokens": 16384,
         "temperature": 0.7,
         "top_p": 0.9,
         "do_sample": True,
@@ -189,3 +191,93 @@ def decode_tokens(tokenizer: AutoTokenizer, token_ids: List[int], skip_special: 
 def decode_token_by_token(tokenizer: AutoTokenizer, token_ids: List[int]) -> List[str]:
     """Decode each token individually"""
     return [tokenizer.decode([tid]) for tid in token_ids]
+
+
+def generate_response_stream(
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    messages: List[Dict[str, str]],
+    system_prompt: str = "",
+    device: torch.device = None,
+    generation_kwargs: Optional[Dict] = None
+):
+    """
+    Generate response from model with streaming tokens.
+
+    Args:
+        model: The language model
+        tokenizer: The tokenizer
+        messages: List of message dicts with 'role' and 'content'
+        system_prompt: System prompt to prepend
+        device: Device to use for generation
+        generation_kwargs: Additional generation parameters
+
+    Yields:
+        Tuple of (token_text, token_id, full_text_so_far) for each generated token
+    """
+    if device is None:
+        device = next(model.parameters()).device
+
+    # Default generation kwargs
+    default_kwargs = {
+        "max_new_tokens": 16384,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "do_sample": True,
+        "pad_token_id": tokenizer.pad_token_id or tokenizer.eos_token_id,
+    }
+
+    if generation_kwargs:
+        default_kwargs.update(generation_kwargs)
+
+    # Prepare messages with system prompt
+    formatted_messages = messages.copy()
+    if system_prompt:
+        formatted_messages.insert(0, {"role": "system", "content": system_prompt})
+
+    # Apply chat template
+    try:
+        formatted_prompt = tokenizer.apply_chat_template(
+            formatted_messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+    except Exception as e:
+        formatted_prompt = format_messages_simple(formatted_messages)
+
+    # Tokenize input
+    inputs = tokenizer(formatted_prompt, return_tensors="pt", truncation=False).to(device)
+    input_length = inputs["input_ids"].shape[1]
+
+    # Create streamer for real-time token streaming
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+    # Prepare generation kwargs with streamer
+    gen_kwargs = {
+        **inputs,
+        **default_kwargs,
+        "streamer": streamer,
+    }
+
+    # Run generation in a separate thread so we can stream tokens
+    thread = Thread(target=model.generate, kwargs=gen_kwargs)
+    thread.start()
+
+    # Stream tokens as they are generated
+    full_text_so_far = ""
+    generated_token_ids = []
+
+    for new_text in streamer:
+        # TextIteratorStreamer yields text chunks, not individual tokens
+        # We need to track what tokens were added
+        full_text_so_far += new_text
+
+        # Get the token IDs for this chunk
+        chunk_ids = tokenizer.encode(new_text, add_special_tokens=False)
+        for token_id in chunk_ids:
+            token_text = tokenizer.decode([token_id], skip_special_tokens=True)
+            generated_token_ids.append(token_id)
+            yield token_text, token_id, full_text_so_far
+
+    # Wait for generation thread to complete
+    thread.join()
