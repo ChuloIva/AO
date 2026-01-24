@@ -1,12 +1,22 @@
 # RunPod Deployment Guide
 
-This guide shows you how to deploy the Activation Oracles Kit on RunPod with automatic setup and GPU support.
+This guide shows you how to deploy the Activation Oracles TUI on RunPod with automatic setup and GPU support.
+
+## What You Get
+
+A browser-based terminal running the Token Oracle Chat TUI:
+- Select tasks and generate multi-persona responses
+- Browse tokens with keyboard navigation
+- Query the oracle about model activations
+- Full terminal experience in your browser via ttyd
+
+---
 
 ## Deployment Options
 
 ### Option 1: Docker Hub (Recommended - One-Click Deploy)
 
-This is the easiest method. Build once, deploy anywhere.
+Build once, deploy anywhere.
 
 #### Step 1: Build and Push Docker Image
 
@@ -30,50 +40,20 @@ docker push yourusername/activation-oracles:latest
 5. Click **"Customize Deployment"**
 6. Under **"Docker Image"**, enter: `yourusername/activation-oracles:latest`
 7. Set **"Docker Command"** to: `/workspace/start.sh`
-8. Set **"Expose HTTP Ports"** to: `8501`
-9. (Optional) Add environment variable:
-   - Key: `OPENROUTER_API_KEY`
-   - Value: `your_openrouter_api_key_here`
-10. Click **"Deploy"**
+8. Set **"Expose HTTP Ports"** to: `7681`
+9. Click **"Deploy"**
 
 #### Step 3: Access Your App
 
-1. Wait for the pod to start (1-2 minutes)
-2. Click **"Connect"** → **"HTTP Service [Port 8501]"**
-3. Streamlit app will open automatically
-4. If you didn't set the API key, enter it in the Setup tab
+1. Wait for the pod to start (1-2 minutes for model loading)
+2. Click **"Connect"** → **"HTTP Service [Port 7681]"**
+3. The TUI opens in your browser - use keyboard to navigate!
 
 ---
 
-### Option 2: GitHub + Manual Build (For Development)
+### Option 2: Manual Setup (For Testing)
 
-RunPod can build directly from GitHub if you include the Dockerfile in your repo.
-
-#### Step 1: Push Files to GitHub
-
-```bash
-cd activation-oracles-kit
-git add Dockerfile start.sh .dockerignore RUNPOD_DEPLOYMENT.md
-git commit -m "Add RunPod deployment files"
-git push
-```
-
-#### Step 2: Deploy from GitHub
-
-1. In RunPod, go to **Serverless** → **"Create Endpoint"**
-2. Click **"Import from GitHub"**
-3. Connect your GitHub account
-4. Select repository: `ChuloIva/AO`
-5. Set **Branch**: `main`
-6. Set **Dockerfile Path**: `activation-oracles-kit/Dockerfile`
-7. Configure GPU and workers
-8. Click **"Deploy"**
-
----
-
-### Option 3: Manual Setup (For Testing)
-
-Quick and dirty for testing, but not persistent.
+Quick setup for testing, but not persistent.
 
 ```bash
 # SSH into your RunPod pod terminal
@@ -87,22 +67,40 @@ pip install -e .
 cd ../activation-oracles-kit
 pip install -r requirements.txt
 
-# Run Streamlit
-streamlit run app.py --server.port 8501
+# Install ttyd
+apt-get update && apt-get install -y ttyd
+
+# Run TUI via ttyd
+ttyd -p 7681 -W python tui_app.py
 ```
 
-Then connect via HTTP Service [Port 8501].
+Then connect via HTTP Service [Port 7681].
 
 ---
 
-## Environment Variables
+## TUI Controls
 
-Set these in RunPod's environment variables section:
+Once connected, use these keyboard shortcuts:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OPENROUTER_API_KEY` | Optional | Your OpenRouter API key (can also enter in UI) |
-| `STREAMLIT_SERVER_PORT` | No | Default: 8501 |
+### Token Browser
+| Key | Action |
+|-----|--------|
+| `←` `→` or `h` `l` | Navigate tokens |
+| `↑` `↓` or `j` `k` | Jump by line |
+| `Space` | Select/deselect token |
+| `1` `2` `3` | Toggle layers 10, 18, 25 |
+| `Q` | Go to oracle chat |
+| `N` | New task |
+| `ESC` | Quit |
+
+### Oracle Chat
+| Command | Action |
+|---------|--------|
+| `/t` | Back to token browser |
+| `/c` | Clear chat history |
+| `/n` | New task |
+| `/q` | Quit |
+| `1-4` | Preset questions |
 
 ---
 
@@ -110,45 +108,41 @@ Set these in RunPod's environment variables section:
 
 | Model | VRAM Required | Recommended GPUs |
 |-------|---------------|------------------|
-| Qwen3-1.7B | 4-6 GB | RTX 4090, A4000, A5000 |
-| Qwen3-4B | 6-8 GB | RTX 4090, A5000, A6000 |
-| Llama-3.2-1B | 3-4 GB | RTX 4090, A4000 |
+| Qwen3-4B | 8-12 GB | RTX 4090, A5000, A6000 |
 
-All models use 8-bit quantization on RunPod for efficiency.
+The model runs in full precision for best oracle accuracy.
 
 ---
 
 ## Troubleshooting
 
-### Port 8501 not accessible
-- Check that you exposed port 8501 in pod settings
-- Wait 30 seconds after pod starts for Streamlit to initialize
+### Port 7681 not accessible
+- Check that you exposed port 7681 in pod settings
+- Wait 1-2 minutes after pod starts for model to load
 - Check pod logs for errors
+
+### Keyboard not working in browser
+- Try refreshing the page
+- Use Chrome or Firefox (Safari may have issues)
+- Check that you clicked inside the terminal window
 
 ### Model fails to load
 - Ensure GPU has enough VRAM (12GB minimum recommended)
 - Check pod logs: `docker logs <container_id>`
-- Try a smaller model (Llama-3.2-1B or Qwen3-1.7B)
 
-### Can't pull from GitHub
-- Ensure repository is public or add GitHub credentials
-- Check branch name is correct (`main`)
-
-### Out of memory errors
-- Use smaller batch sizes in config.yaml
-- Switch to a GPU with more VRAM
-- Use a smaller model
+### Terminal looks broken
+- Resize browser window to refresh layout
+- Try a different browser
 
 ---
 
 ## Cost Optimization
 
-- **Serverless**: Pay per second of inference (best for intermittent use)
 - **Pods**: Hourly rate (best for extended sessions)
 - **Community Cloud**: Cheaper but less reliable
 - **Secure Cloud**: More expensive but enterprise-grade
 
-Stop pods when not in use to avoid charges.
+**Stop pods when not in use to avoid charges.**
 
 ---
 
@@ -158,7 +152,23 @@ The `start.sh` script automatically pulls the latest code from GitHub on each re
 
 To force an update:
 1. Restart your pod
-2. Or SSH in and run: `cd /workspace/AO && git pull && cd activation-oracles-kit`
+2. Or SSH in and run: `cd /workspace/AO && git pull`
+
+---
+
+## Local Development
+
+Run locally with the same web terminal experience:
+
+```bash
+# Install ttyd (macOS)
+brew install ttyd
+
+# Run
+./run_tui_web.sh
+```
+
+Opens browser to `http://localhost:7681`
 
 ---
 
